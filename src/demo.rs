@@ -43,7 +43,7 @@ pub fn demo(s: &mut State, dt: f32) {
         s.apply(Ev::Block { id, kind: kind.clone() });
         if let Kind::Tool(n) = &kind {
             let file = if n == "Read" { "card.rs" } else { "main.rs" };
-            s.apply(Ev::Delta { id, kind: kind.clone(), text: format!(r#"{{"file_path":"examples/notch/src/{file}"}}"#) });
+            s.apply(Ev::Delta { id, kind: kind.clone(), text: format!(r#"{{"file_path":"src/{file}"}}"#) });
         }
     }
     // Bursty, like tokens arriving in uneven chunks.
