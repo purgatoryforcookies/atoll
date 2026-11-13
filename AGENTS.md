@@ -14,12 +14,13 @@ A macOS menu-bar app that turns the MacBook notch into a Dynamic Island for Clau
 - `src/demo.rs`: the scripted stream behind `--scene`. `src/tests.rs`: all tests.
 - `icon.swift` draws `icon.icns`.
 
-## Commands
+## Docs
 
-- `cargo test`
-- `cargo clippy --all-targets`
-- `cargo run --release`, then `ANTHROPIC_BASE_URL=http://127.0.0.1:8788 claude`.
-- `cargo run --release -- --scene demo|pill|card|limit` plays a turn without the relay.
+- [DEVELOP.md](docs/DEVELOP.md): running from source, the scenes, tests and clippy, the Rune pin, screenshots, the icon.
+- [INSTALL.md](docs/INSTALL.md): installing the app, Claude Code settings, configuration.
+- `README.md` is the pitch and a short "get it" for users; detail goes in `docs/`.
+
+Before finishing a change, run `cargo test` and `cargo clippy --all-targets`.
 
 ## Dependencies
 
@@ -32,7 +33,7 @@ A macOS menu-bar app that turns the MacBook notch into a Dynamic Island for Clau
 - A parsing change gets a test in `src/tests.rs` built from a real stream excerpt.
 - Keep Rust files under 800 lines; `main.rs` is close, so move the area you touch into its own module before adding to it.
 - macOS-only code lives in `screen.rs` behind `#[cfg(target_os = "macos")]`, with a no-op for other targets so tests build anywhere. Every `unsafe` block gets a `// SAFETY:` comment.
-- Keep the README's feature list, env var table and scenes in step with the code.
+- Keep the README's feature list, INSTALL.md's env var table and DEVELOP.md's scenes in step with the code.
 
 ## Performance
 

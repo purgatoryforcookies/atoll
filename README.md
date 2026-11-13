@@ -22,129 +22,18 @@ It runs a small relay on localhost that passes every Claude API call through unc
 - **Click to expand.** Click the island while Claude works and it opens into a card with the tool's argument, how long the turn has run, context used, output, the turn's cost, the model and effort, and what the session has cost so far. Click again to fold it back.
 - **Several sessions.** Each Claude Code session going through the relay gets a small pill along the bottom of the island. The lit pill shows which session the numbers belong to.
 - **Rate limits.** When the API turns a request away for a rate limit, the island says when the limit lifts and a ring drains down to that time.
-- **Permission prompts.** With the hook below, the island says "Needs you" in amber while Claude Code waits for your approval.
+- **Permission prompts.** With the optional hook, the island says "Needs you" in amber while Claude Code waits for your approval.
 - **Macs without a notch.** On a screen without a notch, Atoll floats as a small pill under the menu bar that grows the same way. It follows the menu bar when displays are connected or disconnected.
 
-## Requirements
+## Get it
 
-- macOS, ideally a MacBook with a notch
-- Rust 1.99.1 (`rust-toolchain.toml` selects it under rustup)
-- Claude Code
+You need macOS, [Rust](https://rustup.rs) and [Claude Code](https://claude.com/claude-code).
 
-[Rune](https://github.com/anomalyco/rune) comes from git, pinned in `Cargo.toml`; it isn't the `rune` crate on crates.io.
+1. **Clone:** `git clone https://github.com/purgatoryforcookies/atoll.git && cd atoll`
+2. **Build and install** it as `~/Applications/Atoll.app`, with the commands in [INSTALL.md](docs/INSTALL.md#2-build-and-install-the-app).
+3. **Point Claude Code at it** by adding `"env": { "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788" }` to `~/.claude/settings.json`, plus the optional hook for permission prompts ([INSTALL.md](docs/INSTALL.md#3-point-claude-code-at-atoll)).
 
-## Run
-
-```sh
-cargo run --release
-```
-
-Then start Claude Code pointed at the relay:
-
-```sh
-ANTHROPIC_BASE_URL=http://127.0.0.1:8788 claude
-```
-
-To make that permanent, set it in `~/.claude/settings.json` (all projects) or in a project's `.claude/settings.local.json`:
-
-```json
-{ "env": { "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788" } }
-```
-
-While this is set, Claude Code can't connect unless Atoll is running. Quit Atoll from its menu bar menu (⌘Q) or with `pkill -x notch`.
-
-### Install as an app
-
-To keep Atoll running without a terminal and start it at login, wrap the build in an app bundle in `~/Applications`:
-
-```sh
-APP=~/Applications/Atoll.app
-cargo build --release
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp target/release/notch "$APP/Contents/MacOS/notch"
-cp icon.icns "$APP/Contents/Resources/icon.icns"
-cat > "$APP/Contents/Info.plist" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleName</key><string>Atoll</string>
-  <key>CFBundleDisplayName</key><string>Atoll</string>
-  <key>CFBundleIdentifier</key><string>dev.atoll.app</string>
-  <key>CFBundleExecutable</key><string>notch</string>
-  <key>CFBundleIconFile</key><string>icon</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.0.1</string>
-  <key>LSMinimumSystemVersion</key><string>13.0</string>
-  <key>NSHighResolutionCapable</key><true/>
-</dict>
-</plist>
-PLIST
-codesign --force --sign - "$APP"
-open "$APP"
-```
-
-Then tick **Open at Login** in its menu bar menu. macOS only allows that for an installed app; run from `cargo`, the tick stays off.
-
-To update, quit Atoll (`pkill -x notch`) and run the same commands again.
-
-### "Needs you" on permission prompts
-
-Nothing is sent to the API while Claude Code waits for you to approve something, so the relay can't see a permission prompt on its own. Add a `Notification` hook to tell it:
-
-```json
-{
-  "env": { "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788" },
-  "hooks": {
-    "Notification": [
-      {
-        "matcher": "permission_prompt",
-        "hooks": [{ "type": "command", "command": "curl -s -m 1 -X POST http://127.0.0.1:8788/notch -d @- >/dev/null" }]
-      }
-    ]
-  }
-}
-```
-
-The island stays amber until the next request.
-
-## Configuration
-
-The binary, environment variables and hook endpoint still use the project's working name, `notch`.
-
-| Variable         | Default                     | Effect                                                    |
-| ---------------- | --------------------------- | --------------------------------------------------------- |
-| `NOTCH_PORT`     | `8788`                      | Port the relay listens on                                 |
-| `NOTCH_UPSTREAM` | `https://api.anthropic.com` | API the relay forwards to                                 |
-| `NOTCH_PILL`     | unset                       | `1` shows the floating pill even on a screen with a notch |
-
-These are read from the shell, so they don't reach the app when it is opened from Finder.
-
-## Develop
-
-Scripted scenes play a turn without the relay, so Claude Code can't reach the port while one runs:
-
-```sh
-cargo run --release -- --scene demo    # a scripted turn
-cargo run --release -- --scene pill    # the same, as a floating pill
-cargo run --release -- --scene card    # with the card open
-cargo run --release -- --scene limit   # waiting out a rate limit
-cargo test
-```
-
-The screenshots in `docs/` are headless renders of the scenes, for example:
-
-```sh
-cargo run --release -- --scene card --snap docs/card.png --at 4.5 --scale 2
-```
-
-The single-line shots are taken the same way (`demo` at 0.6, 3 and 6 seconds, `limit` at 2) and cropped to their top 72 pixels.
-
-The app icon is drawn by `icon.swift`. To redraw it:
-
-```sh
-swift icon.swift && iconutil -c icns icon.iconset && rm -r icon.iconset
-```
+Start a new Claude Code session and watch the notch. [INSTALL.md](docs/INSTALL.md) also covers updating, uninstalling and configuration; [DEVELOP.md](docs/DEVELOP.md) covers running from source, the demo scenes and tests.
 
 ## Privacy
 
