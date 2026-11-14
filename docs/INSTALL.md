@@ -62,8 +62,6 @@ pkill -x atoll
 
 Then run step 2 again.
 
-Coming from a build before the rename to Atoll, quit it with `pkill -x notch` instead, change the hook URL in your Claude Code settings from `/notch` to `/atoll`, and rename any `NOTCH_*` variables to `ATOLL_*`.
-
 ## Uninstalling
 
 Untick **Open at Login**, quit Atoll from its menu (⌘Q), delete `~/Applications/Atoll.app`, and remove the `ANTHROPIC_BASE_URL` and hook entries from your Claude Code settings.

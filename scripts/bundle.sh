@@ -16,8 +16,6 @@ else
   BIN=target/release/atoll
 fi
 
-# Drop binaries from earlier builds, such as the pre-rename `notch`.
-rm -rf "$APP/Contents/MacOS"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/atoll"
 cp icon.icns "$APP/Contents/Resources/icon.icns"
