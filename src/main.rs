@@ -108,8 +108,6 @@ struct State {
     old_label: String,
     /// 0 to 1: the old label fading out as the new one fades in.
     swap: f32,
-    /// The current tool call's input as it streams, for its argument once whole.
-    input: String,
     /// Characters streamed, decaying over a third of a second: the stream's loudness.
     flow: f32,
     quiet: f32,
@@ -172,7 +170,7 @@ impl Geom {
 impl State {
     fn apply(&mut self, ev: Ev) {
         let id = match &ev {
-            Ev::Start { id, .. } | Ev::Block { id, .. } | Ev::Delta { id, .. } | Ev::Usage { id, .. } | Ev::Stop { id, .. } | Ev::End { id, .. } | Ev::Effort { id, .. } | Ev::Diff { id, .. } | Ev::Limit { id, .. } | Ev::Todo { id, .. } => Some(*id),
+            Ev::Start { id, .. } | Ev::Block { id, .. } | Ev::Delta { id, .. } | Ev::Arg { id, .. } | Ev::Usage { id, .. } | Ev::Stop { id, .. } | Ev::End { id, .. } | Ev::Effort { id, .. } | Ev::Diff { id, .. } | Ev::Limit { id, .. } | Ev::Todo { id, .. } => Some(*id),
             _ => None,
         };
         if id.is_some_and(|id| self.side.contains(&id)) {
@@ -207,7 +205,6 @@ impl State {
             }
             Ev::Block { id, kind } => {
                 if let Kind::Tool(n) | Kind::Skill(n) = &kind {
-                    self.input.clear();
                     let (name, t) = (n.rsplit("__").next().unwrap_or(n).to_string(), self.t);
                     if let Some(c) = self.chat(id) {
                         if c.trail.len() >= chat::TRAIL { c.trail.remove(0); }
@@ -224,12 +221,8 @@ impl State {
                     if let Some(c) = self.chat(id) { c.turn_end = Some(now) }
                 }
             },
-            Ev::Delta { id, kind, text } => {
-                if matches!(kind, Kind::Tool(_) | Kind::Skill(_)) && self.input.len() < 16 << 10 {
-                    self.input.push_str(&text);
-                    let (_, arg) = card::summary(&self.input);
-                    if !arg.is_empty() && let Some((_, a, _)) = self.chat(id).and_then(|c| c.trail.last_mut()) { *a = arg.chars().take(60).collect() }
-                }
+            Ev::Arg { id, arg } => if let Some((_, a, _)) = self.chat(id).and_then(|c| c.trail.last_mut()) { *a = arg.chars().take(60).collect() },
+            Ev::Delta { text, .. } => {
                 self.limit = None;
                 let n = text.chars().count() as f32;
                 self.flow += n;

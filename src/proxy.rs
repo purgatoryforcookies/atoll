@@ -3,8 +3,9 @@
 //! Headers (the API key or OAuth token among them) go upstream untouched and are never kept.
 
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::{Shutdown, TcpListener, TcpStream};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use serde_json::Value;
 use crate::card;
 
@@ -34,6 +35,8 @@ pub enum Ev {
     End { id: u64, status: u16 },
     /// How hard the request asks the model to think: an effort level, or a thinking budget.
     Effort { id: u64, effort: String },
+    /// A tool call's input, once whole, as one short line: a file's name, a command, a pattern.
+    Arg { id: u64, arg: String },
     /// An edit Claude asked for, whole: its file's name and the lines it adds and removes.
     Diff { id: u64, file: String, added: u64, removed: u64 },
     /// Claude's todo list changed: the step in progress (counting from 1), how many there are,
@@ -54,14 +57,18 @@ const MAX_BODY: usize = 64 << 20;
 
 pub fn serve(port: u16, upstream: String, sink: Sink) -> std::io::Result<()> {
     let listener = TcpListener::bind(("127.0.0.1", port))?;
-    let agent = ureq::AgentBuilder::new().build();
+    // Redirects go back to the client as they came: following one would resend `x-api-key` to its host.
+    let agent = ureq::AgentBuilder::new().redirects(0).build();
     std::thread::spawn(move || {
         for (id, conn) in listener.incoming().flatten().enumerate() {
             let (agent, upstream, sink) = (agent.clone(), upstream.clone(), sink.clone());
             let id = id as u64;
             std::thread::spawn(move || {
-                let status = relay(conn, id, &agent, &upstream, &sink).unwrap_or_else(|e| { sink(Ev::Error(e)); 0 });
-                sink(Ev::End { id, status });
+                let ended = Arc::new(AtomicBool::new(false));
+                let status = relay(&conn, id, &agent, &upstream, &sink, &ended).unwrap_or_else(|e| { sink(Ev::Error(e)); 0 });
+                if !ended.swap(true, Ordering::SeqCst) { sink(Ev::End { id, status }) }
+                // The client reads to the close; the watcher's copy of the socket would hold it open.
+                let _ = conn.shutdown(Shutdown::Both);
             });
         }
     });
@@ -75,13 +82,13 @@ fn reply(mut conn: &TcpStream, status: &str, msg: &str) -> Result<u16, String> {
     Err(msg.to_string())
 }
 
-fn relay(conn: TcpStream, id: u64, agent: &ureq::Agent, upstream: &str, sink: &Sink) -> Result<u16, String> {
-    let mut reader = BufReader::new(&conn);
+fn relay(mut conn: &TcpStream, id: u64, agent: &ureq::Agent, upstream: &str, sink: &Sink, ended: &Arc<AtomicBool>) -> Result<u16, String> {
+    let mut reader = BufReader::new(conn);
     let mut line = String::new();
     reader.read_line(&mut line).map_err(|e| e.to_string())?;
     let mut parts = line.split_whitespace();
     let (Some(method), Some(path)) = (parts.next().map(String::from), parts.next().map(String::from)) else {
-        return reply(&conn, "400 Bad Request", "malformed request line");
+        return reply(conn, "400 Bad Request", "malformed request line");
     };
     let (mut headers, mut len) = (Vec::new(), 0usize);
     loop {
@@ -92,12 +99,12 @@ fn relay(conn: TcpStream, id: u64, agent: &ureq::Agent, upstream: &str, sink: &S
         match k.as_str() {
             "content-length" => len = v.parse().unwrap_or(0),
             // shortcut: chunked request bodies are refused; Claude Code always sends a length.
-            "transfer-encoding" => return reply(&conn, "411 Length Required", "send a content-length"),
+            "transfer-encoding" => return reply(conn, "411 Length Required", "send a content-length"),
             k if SKIP.contains(&k) => {}
             _ => headers.push((k, v)),
         }
     }
-    if len > MAX_BODY { return reply(&conn, "413 Payload Too Large", "request body over 64 MB") }
+    if len > MAX_BODY { return reply(conn, "413 Payload Too Large", "request body over 64 MB") }
     let mut body = vec![0; len];
     reader.read_exact(&mut body).map_err(|e| e.to_string())?;
 
@@ -105,7 +112,7 @@ fn relay(conn: TcpStream, id: u64, agent: &ureq::Agent, upstream: &str, sink: &S
     // Claude Code's hooks post what the relay can't see in the traffic.
     if path == "/notch" {
         if req["notification_type"] == "permission_prompt" { sink(Ev::Needs { session: req["session_id"].as_str().unwrap_or("").to_string() }) }
-        write!(&conn, "HTTP/1.1 204 No Content\r\ncontent-length: 0\r\nconnection: close\r\n\r\n").map_err(|e| e.to_string())?;
+        write!(conn, "HTTP/1.1 204 No Content\r\ncontent-length: 0\r\nconnection: close\r\n\r\n").map_err(|e| e.to_string())?;
         return Ok(204)
     }
     let model = req["model"].as_str().unwrap_or(&path).to_string();
@@ -119,24 +126,28 @@ fn relay(conn: TcpStream, id: u64, agent: &ureq::Agent, upstream: &str, sink: &S
         _ => None,
     });
     if let Some(effort) = effort { sink(Ev::Effort { id, effort }) }
+    watch_client(conn, id, sink, ended);
 
     let mut out = agent.request(&method, &format!("{upstream}{path}"));
     for (k, v) in &headers { out = out.set(k, v) }
     let resp = match if body.is_empty() { out.call() } else { out.send_bytes(&body) } {
         Ok(r) | Err(ureq::Error::Status(_, r)) => r,
-        Err(e) => return reply(&conn, "502 Bad Gateway", &format!("upstream: {e}")),
+        Err(e) => return reply(conn, "502 Bad Gateway", &format!("upstream: {e}")),
     };
 
     let status = resp.status();
     if matches!(status, 429 | 529) && let Some(secs) = retry(&resp) { sink(Ev::Limit { id, secs }) }
     let mut head = format!("HTTP/1.1 {status} {}\r\n", resp.status_text());
-    for name in resp.headers_names() {
+    // A name comes once for each time it appears, and `all` gives every value under it.
+    let mut names = resp.headers_names();
+    names.sort();
+    names.dedup();
+    for name in names {
         if SKIP.contains(&name.to_ascii_lowercase().as_str()) { continue }
         for v in resp.all(&name) { head += &format!("{name}: {v}\r\n") }
     }
     // The body ends when the connection closes, so a stream passes through as it arrives.
     head += "connection: close\r\n\r\n";
-    let mut conn = &conn;
     conn.write_all(head.as_bytes()).map_err(|e| e.to_string())?;
 
     let sse = resp.content_type() == "text/event-stream";
@@ -145,11 +156,24 @@ fn relay(conn: TcpStream, id: u64, agent: &ureq::Agent, upstream: &str, sink: &S
     loop {
         let n = body.read(&mut buf).map_err(|e| e.to_string())?;
         if n == 0 { break }
-        conn.write_all(&buf[..n]).and_then(|_| conn.flush()).map_err(|_| "client hung up".to_string())?;
+        // The client hung up: Claude Code was stopped, which is no error.
+        if conn.write_all(&buf[..n]).and_then(|_| conn.flush()).is_err() { return Ok(status) }
         if sse { parser.feed(&buf[..n], &**sink) } else if whole.len() < MAX_BODY { whole.extend_from_slice(&buf[..n]) }
     }
     if !sse && let Ok(v) = serde_json::from_slice::<Value>(&whole) { parser.whole(&v, &**sink) }
     Ok(status)
+}
+
+/// Ends the request as soon as the client hangs up. Stopping Claude closes the connection, but
+/// the relay only learns of it on its next write, and a long think can stream nothing for a while.
+fn watch_client(conn: &TcpStream, id: u64, sink: &Sink, ended: &Arc<AtomicBool>) {
+    let Ok(mut probe) = conn.try_clone() else { return };
+    let (sink, ended) = (sink.clone(), ended.clone());
+    std::thread::spawn(move || {
+        // The whole request is read; what follows is only the close.
+        while matches!(probe.read(&mut [0u8; 64]), Ok(n) if n > 0) {}
+        if !ended.swap(true, Ordering::SeqCst) { sink(Ev::End { id, status: 0 }) }
+    });
 }
 
 /// The context window a request asks for, in tokens: Claude Code asks for 1M with a beta header,
@@ -185,12 +209,14 @@ pub struct Parser {
     usage: Usage,
     /// A `Skill` tool call held back until its input names the skill: block index and input so far.
     skill: Option<(usize, String)>,
-    /// An edit or todo tool call gathered until whole, to read once: block index, tool and input so far.
-    edit: Option<(usize, String, String)>,
+    /// A tool call gathered until whole, to read once: block index, tool and input so far.
+    tool: Option<(usize, String, String)>,
 }
 
-/// What a whole tool call's input tells the island: an edit's lines, or the todo list's step.
+/// What a whole tool call's input tells the island: its argument, an edit's lines, or the todo list's step.
 fn gathered(id: u64, tool: &str, input: &Value, sink: &dyn Fn(Ev)) {
+    let arg = card::summary(input);
+    if !arg.is_empty() { sink(Ev::Arg { id, arg }) }
     if tool == "TodoWrite" { return sink(Ev::Todo { id, step: card::todo(input) }) }
     if let Some((file, added, removed)) = card::diff(tool, input) { sink(Ev::Diff { id, file, added, removed }) }
 }
@@ -228,19 +254,19 @@ impl Parser {
                 if self.blocks.len() <= i { self.blocks.resize(i + 1, Kind::Text) }
                 self.blocks[i] = kind.clone();
                 if kind == Kind::Tool("Skill".into()) { self.skill = Some((i, String::new())); return }
-                if let Kind::Tool(name) = &kind && (card::EDITS.contains(&name.as_str()) || name == "TodoWrite") { self.edit = Some((i, name.clone(), String::new())) }
+                if let Kind::Tool(name) = &kind { self.tool = Some((i, name.clone(), String::new())) }
                 sink(Ev::Block { id, kind });
             }
             "content_block_delta" => {
                 let d = &v["delta"];
                 let text = d["text"].as_str().or(d["thinking"].as_str()).or(d["partial_json"].as_str()).unwrap_or("");
                 if let Some((i, input)) = &mut self.skill && v["index"].as_u64() == Some(*i as u64) { return input.push_str(text) }
-                if let Some((i, _, input)) = &mut self.edit && v["index"].as_u64() == Some(*i as u64) { input.push_str(text) }
+                if let Some((i, _, input)) = &mut self.tool && v["index"].as_u64() == Some(*i as u64) { input.push_str(text) }
                 let kind = self.blocks.get(v["index"].as_u64().unwrap_or(0) as usize).cloned().unwrap_or(Kind::Text);
                 if !text.is_empty() { sink(Ev::Delta { id, kind, text: text.to_string() }) }
             }
             "content_block_stop" => {
-                if let Some((_, tool, input)) = self.edit.take_if(|(i, ..)| v["index"].as_u64() == Some(*i as u64)) {
+                if let Some((_, tool, input)) = self.tool.take_if(|(i, ..)| v["index"].as_u64() == Some(*i as u64)) {
                     let input: Value = serde_json::from_str(&input).unwrap_or_default();
                     gathered(id, &tool, &input, sink);
                 }
@@ -250,6 +276,7 @@ impl Parser {
                 self.blocks[i] = kind.clone();
                 sink(Ev::Block { id, kind: kind.clone() });
                 sink(Ev::Delta { id, kind, text: input.to_string() });
+                gathered(id, "Skill", &input, sink);
             }
             "message_delta" => {
                 if let Some(r) = v["delta"]["stop_reason"].as_str() { sink(Ev::Stop { id, reason: r.to_string() }) }

@@ -1,27 +1,18 @@
 //! What the expanded island says: the current tool's argument, and the turn in four numbers.
 
-/// A tool call's input as one short line, with a caption saying what the line is: a file's
-/// name, a command, a pattern. Empty until the input has streamed whole.
-pub fn summary(input: &str) -> (&'static str, String) {
-    const KEYS: [(&str, &str); 10] = [
-        ("file_path", "File"), ("notebook_path", "Notebook"), ("path", "Folder"), ("command", "Command"),
-        ("pattern", "Pattern"), ("query", "Search"), ("url", "Page"), ("skill", "Skill"),
-        ("description", "Task"), ("prompt", "Task"),
-    ];
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(input) else { return ("", String::new()) };
-    for (key, caption) in KEYS {
-        if let Some(s) = v[key].as_str() {
+/// A whole tool call's input as one short line: a file's name, a command, a pattern.
+pub fn summary(input: &serde_json::Value) -> String {
+    const KEYS: [&str; 10] = ["file_path", "notebook_path", "path", "command", "pattern", "query", "url", "skill", "description", "prompt"];
+    for key in KEYS {
+        if let Some(s) = input[key].as_str() {
             let s = if key.ends_with("path") { s.trim_end_matches('/').rsplit('/').next().unwrap_or(s) } else { s };
-            return (caption, s.lines().next().unwrap_or("").trim().to_string());
+            return s.lines().next().unwrap_or("").trim().to_string();
         }
     }
-    ("", String::new())
+    String::new()
 }
 
-/// Claude Code's tools that change a file, whose lines the island counts.
-pub const EDITS: [&str; 3] = ["Edit", "MultiEdit", "Write"];
-
-/// The file an edit touches, by name, and the lines it adds and removes. A replacement counts
+/// The file one of Claude Code's edit tools touches, by name, and the lines it adds and removes. A replacement counts
 /// only what differs once the lines it keeps at either end are set aside.
 // shortcut: counts the edit Claude asked for, so one you deny still counts, and a Write over an
 // existing file counts all its lines as added; reading tool results in the next request would fix both.

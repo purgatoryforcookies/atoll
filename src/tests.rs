@@ -124,9 +124,8 @@ fn a_pill_on_a_notched_screen_stays_small_and_hangs_below_the_notch() {
 
 #[test]
 fn the_card_reads_tools_models_and_apps_the_way_people_say_them() {
-    assert_eq!(card::summary(r#"{"file_path":"/a/b/main.rs","limit":40}"#), ("File", "main.rs".into()));
-    assert_eq!(card::summary(r#"{"command":"cargo test\nmore","description":"Run"}"#), ("Command", "cargo test".into()));
-    assert_eq!(card::summary(r#"{"file_path":"/a/b/mai"#), ("", String::new()), "half-streamed input says nothing yet");
+    assert_eq!(card::summary(&serde_json::json!({ "file_path": "/a/b/main.rs", "limit": 40 })), "main.rs");
+    assert_eq!(card::summary(&serde_json::json!({ "command": "cargo test\nmore", "description": "Run" })), "cargo test");
     assert_eq!(card::model_name("claude-opus-5-5"), "Opus 5.5");
     assert_eq!(card::effort("high"), "High effort");
     assert_eq!(card::effort("32k thinking"), "32k thinking");
@@ -315,7 +314,7 @@ fn the_card_line_reads_the_todo_step_or_else_the_last_few_tools() {
     s.apply(Ev::Start { id: 1, model: "claude-opus".into(), window: 200_000, session: "a".into() });
     for (tool, input) in [("Read", r#"{"file_path":"/x/card.rs"}"#), ("Bash", r#"{"command":"cargo test"}"#), ("Grep", r#"{"pattern":"fn main"}"#), ("Edit", r#"{"file_path":"/x/main.rs"}"#), ("Read", r#"{"file_path":"/x/tests.rs"}"#)] {
         s.apply(Ev::Block { id: 1, kind: Kind::Tool(tool.into()) });
-        s.apply(Ev::Delta { id: 1, kind: Kind::Tool(tool.into()), text: input.into() });
+        s.apply(Ev::Arg { id: 1, arg: card::summary(&serde_json::from_str(input).unwrap()) });
     }
     // The last four, oldest first, each with its argument; the list is kept across turns, the trail isn't.
     let trail: Vec<(String, String)> = s.lead().unwrap().trail.iter().map(|(n, a, _)| (n.clone(), a.clone())).collect();
@@ -325,4 +324,125 @@ fn the_card_line_reads_the_todo_step_or_else_the_last_few_tools() {
     s.apply(Ev::End { id: 1, status: 200 });
     s.apply(Ev::Start { id: 2, model: "claude-opus".into(), window: 200_000, session: "a".into() });
     assert!(s.lead().unwrap().trail.is_empty() && s.lead().unwrap().todo.is_some());
+}
+
+
+/// Feeds `sse` lines to `p` and plays what it reads into `s`.
+fn play(s: &mut State, p: &mut proxy::Parser, sse: &[&str]) {
+    let evs = std::sync::Mutex::new(Vec::new());
+    p.feed(sse.iter().map(|l| format!("data: {l}\n")).collect::<String>().as_bytes(), &|e| evs.lock().unwrap().push(e));
+    for e in evs.into_inner().unwrap() { s.apply(e) }
+}
+
+#[test]
+fn each_session_keeps_its_own_tool_arguments_while_both_stream() {
+    let mut s = State::default();
+    let (mut a, mut b) = (proxy::Parser::default(), proxy::Parser::default());
+    (a.id, b.id) = (1, 2);
+    s.apply(Ev::Start { id: 1, model: "claude-opus".into(), window: 200_000, session: "a".into() });
+    s.apply(Ev::Start { id: 2, model: "claude-opus".into(), window: 200_000, session: "b".into() });
+    play(&mut s, &mut a, &[
+        r#"{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_01","name":"Bash","input":{}}}"#,
+        r#"{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"command\": \"cargo"}}"#,
+    ]);
+    play(&mut s, &mut b, &[
+        r#"{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_02","name":"Read","input":{}}}"#,
+        r#"{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"file_path\": \"/x/card.rs\"}"}}"#,
+        r#"{"type":"content_block_stop","index":0}"#,
+        r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_03","name":"Skill","input":{}}}"#,
+        r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"skill\": \"pdf\"}"}}"#,
+        r#"{"type":"content_block_stop","index":1}"#,
+    ]);
+    play(&mut s, &mut a, &[
+        r#"{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":" test\"}"}}"#,
+        r#"{"type":"content_block_stop","index":0}"#,
+    ]);
+    let trail = |id: &str| s.chats.iter().find(|c| c.id == id).unwrap().trail.iter().map(|(n, a, _)| format!("{n} {a}")).collect::<Vec<_>>();
+    assert_eq!(trail("a"), ["Bash cargo test"]);
+    assert_eq!(trail("b"), ["Read card.rs", "pdf pdf"]);
+}
+
+#[test]
+fn usage_read_across_the_stream_prices_the_request() {
+    let sse = concat!(
+        "event: message_start\n",
+        r#"data: {"type":"message_start","message":{"id":"msg_01","type":"message","role":"assistant","model":"claude-opus-5-5","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":3,"cache_creation_input_tokens":2048,"cache_read_input_tokens":41210,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":2048},"output_tokens":1,"service_tier":"standard"}}}"#, "\n\n",
+        "event: ping\ndata: {\"type\": \"ping\"}\n\n",
+        "event: message_delta\n",
+        r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":512}}"#, "\n\n",
+        "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    );
+    let evs = std::sync::Mutex::new(Vec::new());
+    let mut p = proxy::Parser::default();
+    // Network reads split lines anywhere, here mid-way through the first event's JSON.
+    let (x, y) = sse.split_at(sse.find("cache_read").unwrap());
+    for part in [x, y] { p.feed(part.as_bytes(), &|e| evs.lock().unwrap().push(e)) }
+    let evs = evs.into_inner().unwrap();
+    let Some(Ev::Usage { usage, .. }) = evs.iter().rfind(|e| matches!(e, Ev::Usage { .. })) else { panic!("no usage in {evs:?}") };
+    assert_eq!(*usage, proxy::Usage { input: 3, output: 512, cache_read: 41_210, cache_write: 2048, cache_write_1h: 2048 });
+    assert!(evs.contains(&Ev::Stop { id: 0, reason: "end_turn".into() }));
+    // 3 × $4/M + 2048 × $8/M (an hour's cache write) + 41,210 × $0.20/M + 512 × $20/M.
+    assert!((ledger::price("claude-opus-5-5", usage) - 0.034878).abs() < 1e-9);
+}
+
+/// A fake API that sends `answer` to one request, then holds the connection open for `hold`;
+/// and the relay in front of it, with what it reports.
+fn relay_to(answer: &'static str, hold: std::time::Duration) -> (u16, std::sync::mpsc::Receiver<Ev>) {
+    use std::io::{Read, Write};
+    let api = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let upstream = format!("http://{}", api.local_addr().unwrap());
+    std::thread::spawn(move || {
+        let (mut c, _) = api.accept().unwrap();
+        let _ = c.read(&mut [0u8; 4096]);
+        c.write_all(answer.as_bytes()).unwrap();
+        std::thread::sleep(hold);
+    });
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    let (tx, rx) = std::sync::mpsc::channel();
+    proxy::serve(port, upstream, Arc::new(move |e| { let _ = tx.send(e); })).unwrap();
+    (port, rx)
+}
+
+fn ask(port: u16) -> std::net::TcpStream {
+    use std::io::Write;
+    let mut c = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    c.write_all(b"POST /v1/messages HTTP/1.1\r\nhost: x\r\ncontent-type: application/json\r\ncontent-length: 2\r\n\r\n{}").unwrap();
+    c
+}
+
+#[test]
+fn the_relay_hands_back_a_redirect_and_every_header_once() {
+    use std::io::Read;
+    let (port, rx) = relay_to("HTTP/1.1 302 Found\r\nlocation: http://127.0.0.1:9/elsewhere\r\nset-cookie: a=1\r\nset-cookie: b=2\r\ncontent-length: 0\r\n\r\n", Default::default());
+    let mut got = String::new();
+    ask(port).read_to_string(&mut got).unwrap();
+    assert!(got.starts_with("HTTP/1.1 302"), "{got}");
+    for h in ["location: http://127.0.0.1:9/elsewhere", "set-cookie: a=1", "set-cookie: b=2"] { assert_eq!(got.matches(h).count(), 1, "{h} in {got}") }
+    assert!(rx.iter().any(|e| e == Ev::End { id: 0, status: 302 }));
+}
+
+#[test]
+fn stopping_claude_mid_think_ends_the_request_at_once() {
+    use std::io::Read;
+    let start = r#"{"type":"message_start","message":{"usage":{"input_tokens":3}}}"#;
+    let answer = format!("HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\r\nevent: message_start\ndata: {start}\n\n").leak();
+    // The API goes quiet, as it does through a long think.
+    let (port, rx) = relay_to(answer, std::time::Duration::from_secs(10));
+    let mut c = ask(port);
+    let mut got = Vec::new();
+    while !String::from_utf8_lossy(&got).contains("message_start") {
+        let mut buf = [0u8; 1024];
+        let n = c.read(&mut buf).unwrap();
+        got.extend_from_slice(&buf[..n]);
+    }
+    drop(c);
+    let end = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        match rx.recv_timeout(end.saturating_duration_since(std::time::Instant::now())) {
+            Ok(Ev::End { status, .. }) => break assert_eq!(status, 0),
+            Ok(Ev::Error(e)) => panic!("a stop is no error: {e}"),
+            Ok(_) => {}
+            Err(_) => panic!("the request was still live 2s after the client left"),
+        }
+    }
 }
