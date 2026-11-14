@@ -65,11 +65,16 @@ pub fn card_labels(s: &State, g: &Geom, alpha: f32, mut shape: Shape, labels: &m
         ("Output", if out > 0 { card::tokens(out) } else { "–".into() }),
         ("Cost", if cost > 0.0 { ledger::usd(cost) } else { "–".into() }),
     ];
-    let col = (x1 - x0) / stats.len() as f32;
-    for (i, (caption, value)) in stats.into_iter().enumerate() {
-        let x = x0 + col * i as f32;
-        labels.push(Label { text: caption.into(), x, y: y0 + 30.0, room: col - 6.0, alpha: alpha * 0.45, color: INK, right: false, head: false, style: CAPTION });
-        labels.push(Label { text: value, x, y: y0 + 44.0, room: col - 6.0, alpha, color: INK, right: false, head: false, style: VALUE });
+    // The first starts at the left edge and the last ends at the right, with even gaps between.
+    // Digits are measured as zeros, so the row holds still while the numbers count.
+    let zeros = |t: &str, style| rune::text::measure(&t.replace(|c: char| c.is_ascii_digit(), "0"), &[], style, None).0;
+    let widths: Vec<f32> = stats.iter().map(|(c, v)| zeros(c, CAPTION).max(zeros(v, VALUE))).collect();
+    let gap = ((x1 - x0 - widths.iter().sum::<f32>()) / (stats.len() - 1) as f32).max(0.0);
+    let mut x = x0;
+    for ((caption, value), w) in stats.into_iter().zip(widths) {
+        labels.push(Label { text: caption.into(), x, y: y0 + 30.0, room: 0.0, alpha: alpha * 0.45, color: INK, right: false, head: false, style: CAPTION });
+        labels.push(Label { text: value, x, y: y0 + 44.0, room: 0.0, alpha, color: INK, right: false, head: false, style: VALUE });
+        x += w + gap;
     }
     let total = if s.total_cost > 0.0 { format!("{} total", ledger::usd(s.total_cost)) } else { String::new() };
     let (model, effort) = s.lead().map_or((String::new(), String::new()), |c| (card::model_name(&c.model), card::effort(&c.effort)));

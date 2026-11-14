@@ -50,3 +50,9 @@ The single-line shots are taken the same way (`demo` at 0.6, 3 and 6 seconds, `l
 ```sh
 swift icon.swift && iconutil -c icns icon.iconset && rm -r icon.iconset
 ```
+
+The README's header image is a PNG of the same icon:
+
+```sh
+sips -s format png -Z 256 icon.icns --out docs/icon.png
+```

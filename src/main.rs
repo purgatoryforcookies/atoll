@@ -177,6 +177,8 @@ impl State {
             if let Ev::End { id, .. } = ev { self.side.remove(&id); }
             return
         }
+        // A stopped request's last chunk can land after its end; it says nothing now.
+        if !matches!(ev, Ev::Start { .. }) && id.is_some_and(|id| !self.live.contains(&id)) { return }
         let now = self.last_t;
         // The card follows whichever session spoke last.
         if let Some(c) = id.and_then(|id| self.sessions.get(&id)).and_then(|sid| self.chats.iter_mut().find(|c| c.id == *sid)) {
@@ -388,8 +390,9 @@ impl State {
         self.waited += dt;
         self.flow *= (-dt / 0.33).exp();
         self.failed *= (-dt * 1.5).exp();
-        let what = self.what();
-        if self.working() && what != self.label {
+        // Once work stops the label lifts away, before the island narrows and would cut it.
+        let what = if self.working() { self.what() } else { String::new() };
+        if what != self.label {
             self.old_label = std::mem::replace(&mut self.label, what);
             self.swap = 0.0;
         }
@@ -416,7 +419,7 @@ impl State {
         // stayed a moment, so a run of quick tools doesn't pump the island.
         let need = self.reach();
         self.narrower = if need >= self.held { 0.0 } else { self.narrower + dt };
-        if need >= self.held || self.narrower > HOLD || !self.working() { self.held = need }
+        if need >= self.held || self.narrower > HOLD || (!self.working() && self.swap == 1.0) { self.held = need }
         let target = self.held + if self.hover && !self.expanded { HOVER } else { 0.0 };
         // Slightly underdamped springs, so the island settles with its small overshoot.
         let (k, c) = (220.0, 2.0 * 220f32.sqrt() * 0.72);

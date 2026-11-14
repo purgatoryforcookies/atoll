@@ -102,6 +102,37 @@ fn a_shorter_label_waits_before_the_island_narrows() {
 }
 
 #[test]
+fn the_label_goes_before_the_island_narrows_past_it() {
+    let mut s = State::default();
+    s.apply(Ev::Start { id: 1, model: "claude-opus".into(), window: 200_000, session: String::new() });
+    s.apply(Ev::Block { id: 1, kind: Kind::Thinking });
+    for _ in 0..60 { s.step(1.0 / 60.0); }
+    let wide = s.wing;
+    // Stopped mid-think: the request ends with no stop reason.
+    s.apply(Ev::End { id: 1, status: 0 });
+    let mut frames = 0;
+    while s.step(1.0 / 60.0) {
+        frames += 1;
+        assert!(frames < 600, "never settled");
+        if s.wing < wide - 1.0 { assert!(s.label.is_empty() && s.swap == 1.0, "label cut as the island narrowed") }
+    }
+    assert_eq!(s.wing, 0.0);
+}
+
+#[test]
+fn a_chunk_landing_after_a_stopped_request_ends_is_ignored() {
+    let mut s = State::default();
+    s.apply(Ev::Start { id: 1, model: "claude-opus".into(), window: 200_000, session: String::new() });
+    s.apply(Ev::Block { id: 1, kind: Kind::Tool("Bash".into()) });
+    s.apply(Ev::End { id: 1, status: 0 });
+    s.apply(Ev::Stop { id: 1, reason: "tool_use".into() });
+    s.apply(Ev::Delta { id: 1, kind: Kind::Text, text: "late".into() });
+    let mut frames = 0;
+    while s.step(1.0 / 60.0) { frames += 1; assert!(frames < 600, "stuck working") }
+    assert!(!s.running && s.wing == 0.0);
+}
+
+#[test]
 fn without_a_notch_a_pill_floats_centred_under_the_top_edge() {
     // A 32" 4K monitor at 2560 points: 0.277 mm a point, so the pill zooms to 7.5 mm tall.
     let big = Screen { width: 2560.0, height: 1440.0, scale: 1.5, notch: None, mm: 708.0 / 2560.0, inset: 0.0 };
