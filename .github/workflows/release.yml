@@ -9,7 +9,28 @@ permissions:
   contents: write
 
 jobs:
+  # Path filters ignore tags, so a docs-only tag is caught by diffing against the previous one.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
+        with:
+          fetch-depth: 0
+      - id: diff
+        run: |
+          prev=$(git describe --tags --abbrev=0 --match 'v*' "$GITHUB_SHA^" 2>/dev/null || true)
+          if [ -n "$prev" ] && ! git diff --name-only "$prev" "$GITHUB_SHA" | grep -Eqv '(\.md$|^docs/)'; then
+            echo "Only docs changed since $prev; skipping the release."
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+
   release:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
