@@ -11,7 +11,8 @@ pub fn card_labels(s: &State, g: &Geom, alpha: f32, mut shape: Shape, labels: &m
     const CAPTION: TextStyle = TextStyle::new(10.5, 500.0);
     const VALUE: TextStyle = TextStyle::new(15.0, 550.0).tracking(-0.2);
     let (x0, x1) = (g.left() + 18.0, g.right() - 18.0);
-    let y0 = g.top + g.row + 4.0;
+    // Clear of the notch's bottom edge, which shows against the island's not-quite-black.
+    let y0 = g.top + g.row + 8.0;
     let w = |t: &str| rune::text::measure(t, &[], LABEL, None).0;
     let label = |text: String, x: f32, room: f32, a: f32| Label { text, x, y: y0, room, alpha: alpha * a, color: INK, right: false, head: false, style: LABEL };
     let lead = s.lead();
@@ -88,7 +89,7 @@ pub fn pills(s: &State, g: &Geom, alpha: f32) -> Vec<El> {
     let n = s.chats.len();
     if n < 2 { return Vec::new() }
     let focus = s.focus();
-    let (x0, y, k) = (g.w * 0.5 - (W * n as f32 + GAP * (n - 1) as f32) * 0.5, g.top + g.row + 102.0, g.k);
+    let (x0, y, k) = (g.w * 0.5 - (W * n as f32 + GAP * (n - 1) as f32) * 0.5, g.top + g.row + 106.0, g.k);
     s.chats.iter().enumerate().map(|(i, c)| {
         let a = if focus.iter().any(|f| f.id == c.id) { 0.85 } else { 0.22 } * alpha;
         el().absolute((x0 + (W + GAP) * i as f32) * k, y * k).size(W * k, H * k).radius(H * 0.5 * k).pixel_snap(false).fill(Color { a, ..INK })
