@@ -2,12 +2,12 @@
 
 # Atoll
 
-A macOS menu-bar app that turns the MacBook notch into a Dynamic Island for Claude Code. A localhost relay forwards every Claude API call unchanged and reads the streamed answer; the island animates from what it reads. The crate, binary, env vars and hook endpoint still use the working name `notch`.
+A macOS menu-bar app that turns the MacBook notch into a Dynamic Island for Claude Code. A localhost relay forwards every Claude API call unchanged and reads the streamed answer; the island animates from what it reads.
 
 ## Layout
 
 - `src/main.rs`: app state, the event loop (`setup`, `poll`), the island's shape and drawing (`view`).
-- `src/proxy.rs`: the relay. HTTP/1.1 on `127.0.0.1`, forwards upstream byte for byte, parses server-sent events into `Ev`s, and takes the permission hook on `POST /notch`.
+- `src/proxy.rs`: the relay. HTTP/1.1 on `127.0.0.1`, forwards upstream byte for byte, parses server-sent events into `Ev`s, and takes the permission hook on `POST /atoll`.
 - `src/screen.rs`: which screen, where the notch is, the window's place; the AppKit glue (pointer, menu bar item, Open at Login).
 - `src/card.rs`, `src/expanded.rs`: what the expanded card says, and how it draws.
 - `src/chat.rs`: one Claude Code session's state. `src/ledger.rs`: token prices.

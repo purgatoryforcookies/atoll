@@ -9,15 +9,17 @@ VERSION=${VERSION:-$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)}
 
 if [ "${UNIVERSAL:-}" = 1 ]; then
   cargo build --release --target aarch64-apple-darwin --target x86_64-apple-darwin
-  BIN=target/release/notch-universal
-  lipo -create -output "$BIN" target/aarch64-apple-darwin/release/notch target/x86_64-apple-darwin/release/notch
+  BIN=target/release/atoll-universal
+  lipo -create -output "$BIN" target/aarch64-apple-darwin/release/atoll target/x86_64-apple-darwin/release/atoll
 else
   cargo build --release
-  BIN=target/release/notch
+  BIN=target/release/atoll
 fi
 
+# Drop binaries from earlier builds, such as the pre-rename `notch`.
+rm -rf "$APP/Contents/MacOS"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/notch"
+cp "$BIN" "$APP/Contents/MacOS/atoll"
 cp icon.icns "$APP/Contents/Resources/icon.icns"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -27,7 +29,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleName</key><string>Atoll</string>
   <key>CFBundleDisplayName</key><string>Atoll</string>
   <key>CFBundleIdentifier</key><string>dev.atoll.app</string>
-  <key>CFBundleExecutable</key><string>notch</string>
+  <key>CFBundleExecutable</key><string>atoll</string>
   <key>CFBundleIconFile</key><string>icon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>

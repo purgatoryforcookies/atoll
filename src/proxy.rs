@@ -110,7 +110,7 @@ fn relay(mut conn: &TcpStream, id: u64, agent: &ureq::Agent, upstream: &str, sin
 
     let req: Value = serde_json::from_slice(&body).unwrap_or_default();
     // Claude Code's hooks post what the relay can't see in the traffic.
-    if path == "/notch" {
+    if path == "/atoll" {
         if req["notification_type"] == "permission_prompt" { sink(Ev::Needs { session: req["session_id"].as_str().unwrap_or("").to_string() }) }
         write!(conn, "HTTP/1.1 204 No Content\r\ncontent-length: 0\r\nconnection: close\r\n\r\n").map_err(|e| e.to_string())?;
         return Ok(204)

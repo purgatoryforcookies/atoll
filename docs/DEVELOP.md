@@ -9,7 +9,7 @@ cargo run --release
 ANTHROPIC_BASE_URL=http://127.0.0.1:8788 claude   # in another terminal
 ```
 
-Quit an installed Atoll first (`pkill -x notch`); only one can hold the port. Quit with ⌘Q from the menu bar item or `pkill -x notch`. "Open at Login" stays off when run from `cargo`; macOS only allows it for an installed app.
+Quit an installed Atoll first (`pkill -x atoll`); only one can hold the port. Quit with ⌘Q from the menu bar item or `pkill -x atoll`. "Open at Login" stays off when run from `cargo`; macOS only allows it for an installed app.
 
 ## Scenes
 

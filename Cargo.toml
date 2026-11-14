@@ -1,5 +1,5 @@
 [package]
-name = "notch"
+name = "atoll"
 version = "0.0.1"
 edition = "2024"
 license = "MIT"
@@ -11,10 +11,6 @@ license = "MIT"
 rune = { git = "https://github.com/purgatoryforcookies/rune", rev = "735ef2cddc404f01bb3c48d7e8a6677b7f8fe54f" }
 serde_json = "1"
 ureq = { version = "2", default-features = false, features = ["tls"] }
-
-[features]
-# Live view edits through Rune's scripts/rune-dev.
-hot = ["rune/hot"]
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.5.2"

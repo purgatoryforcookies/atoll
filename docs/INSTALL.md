@@ -37,7 +37,7 @@ Add this to `~/.claude/settings.json` (all projects) or a project's `.claude/set
     "Notification": [
       {
         "matcher": "permission_prompt",
-        "hooks": [{ "type": "command", "command": "curl -s -m 1 -X POST http://127.0.0.1:8788/notch -d @- >/dev/null" }]
+        "hooks": [{ "type": "command", "command": "curl -s -m 1 -X POST http://127.0.0.1:8788/atoll -d @- >/dev/null" }]
       }
     ]
   }
@@ -55,10 +55,12 @@ To try it for one session without touching settings: `ANTHROPIC_BASE_URL=http://
 
 ```sh
 git pull
-pkill -x notch
+pkill -x atoll
 ```
 
 Then run step 2 again.
+
+Coming from a build before the rename to Atoll, quit it with `pkill -x notch` instead, change the hook URL in your Claude Code settings from `/notch` to `/atoll`, and rename any `NOTCH_*` variables to `ATOLL_*`.
 
 ## Uninstalling
 
@@ -66,12 +68,10 @@ Untick **Open at Login**, quit Atoll from its menu (⌘Q), delete `~/Application
 
 ## Configuration
 
-The binary, environment variables and hook endpoint still use the project's working name, `notch`.
-
 | Variable         | Default                     | Effect                                                    |
 | ---------------- | --------------------------- | --------------------------------------------------------- |
-| `NOTCH_PORT`     | `8788`                      | Port the relay listens on                                 |
-| `NOTCH_UPSTREAM` | `https://api.anthropic.com` | API the relay forwards to                                 |
-| `NOTCH_PILL`     | unset                       | `1` shows the floating pill even on a screen with a notch |
+| `ATOLL_PORT`     | `8788`                      | Port the relay listens on                                 |
+| `ATOLL_UPSTREAM` | `https://api.anthropic.com` | API the relay forwards to                                 |
+| `ATOLL_PILL`     | unset                       | `1` shows the floating pill even on a screen with a notch |
 
-These are read from the shell, so they only apply when you start the binary from a terminal (`NOTCH_PORT=9000 ~/Applications/Atoll.app/Contents/MacOS/notch`), not when the app is opened from Finder or at login. If you change the port, change it in the Claude Code settings too.
+These are read from the shell, so they only apply when you start the binary from a terminal (`ATOLL_PORT=9000 ~/Applications/Atoll.app/Contents/MacOS/atoll`), not when the app is opened from Finder or at login. If you change the port, change it in the Claude Code settings too.

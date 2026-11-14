@@ -1,5 +1,5 @@
-// Draws Notch's app icon: the island on a dark tile, its dot and ring on the left and the
-// waveform on the right. Run from examples/notch:
+// Draws Atoll's app icon: the island on a dark tile, its dot and ring on the left and the
+// waveform on the right. Run from the repo root:
 //
 //   swift icon.swift && iconutil -c icns icon.iconset && rm -r icon.iconset
 import AppKit

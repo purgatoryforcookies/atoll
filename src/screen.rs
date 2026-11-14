@@ -112,8 +112,8 @@ pub fn menu_screen() -> Screen {
         let (top, l, r) = unsafe { (screen.safeAreaInsets().top, screen.auxiliaryTopLeftArea(), screen.auxiliaryTopRightArea()) };
         let frame = screen.frame();
         let w = frame.size.width - l.size.width - r.size.width;
-        // `NOTCH_PILL=1` floats the pill even on a screen with a notch.
-        let pill = std::env::var("NOTCH_PILL").is_ok_and(|v| !v.is_empty() && v != "0");
+        // `ATOLL_PILL=1` floats the pill even on a screen with a notch.
+        let pill = std::env::var("ATOLL_PILL").is_ok_and(|v| !v.is_empty() && v != "0");
         let notch = (top > 0.0 && w > 0.0 && !pill).then_some([w as f32, top as f32]);
         #[repr(C)]
         struct Size { w: f64, _h: f64 }
@@ -190,7 +190,7 @@ mod mac {
             });
             let image: *mut AnyObject = msg_send![class!(NSImage), imageWithSize: NSSize::new(19.0, 18.0), flipped: Bool::NO, drawingHandler: &*draw];
             let _: () = msg_send![image, setTemplate: Bool::YES];
-            let name = NSString::from_str("Notch");
+            let name = NSString::from_str("Atoll");
             let _: () = msg_send![image, setAccessibilityDescription: &*name];
             let _: () = msg_send![button, setImage: image];
             let menu: Retained<AnyObject> = msg_send_id![class!(NSMenu), new];
@@ -200,7 +200,7 @@ mod mac {
                 let _: () = msg_send![&*menu, addItem: sep];
                 std::mem::forget(login);
             }
-            let (title, key) = (NSString::from_str("Quit Notch"), NSString::from_str("q"));
+            let (title, key) = (NSString::from_str("Quit Atoll"), NSString::from_str("q"));
             let quit: Retained<AnyObject> = msg_send_id![msg_send_id![class!(NSMenuItem), alloc],
                 initWithTitle: &*title, action: sel!(terminate:), keyEquivalent: &*key];
             let _: () = msg_send![&*menu, addItem: &*quit];
@@ -241,7 +241,7 @@ mod mac {
                     let _: () = msg_send![item, setState: (status(service) == 1) as isize];
                 }
             }
-            let mut builder = objc2::declare::ClassBuilder::new("NotchLoginTarget", class!(NSObject))?;
+            let mut builder = objc2::declare::ClassBuilder::new("AtollLoginTarget", class!(NSObject))?;
             builder.add_method(sel!(toggle:), toggle as extern "C" fn(_, _, _));
             let target: Retained<AnyObject> = msg_send_id![builder.register(), new];
             let title = NSString::from_str("Open at Login");

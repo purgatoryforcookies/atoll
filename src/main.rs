@@ -1,4 +1,4 @@
-//! Notch: Claude's traffic as a Dynamic Island on a MacBook's notch. A localhost relay forwards
+//! Atoll: Claude's traffic as a Dynamic Island on a MacBook's notch. A localhost relay forwards
 //! every API call untouched; while an answer streams, the notch grows two
 //! wings, a dot on the left in the colour of what Claude is doing and a waveform on the right
 //! that moves with each piece of the stream, and beside the dot what Claude is on: thinking,
@@ -16,13 +16,13 @@
 //! it. Turned away for a rate limit, the island says when it lifts and its ring drains to it.
 //!
 //! ```sh
-//! cargo run -p notch --release
+//! cargo run -p atoll --release
 //! ANTHROPIC_BASE_URL=http://127.0.0.1:8788 claude
 //! ```
 //!
 //! It sits on the screen with the menu bar, and moves when displays come and go. On a screen
-//! without a notch it floats as a small pill that grows the same way; `NOTCH_PILL=1` floats it
-//! on any screen. `NOTCH_PORT` changes the port, `NOTCH_UPSTREAM` the API it relays to.
+//! without a notch it floats as a small pill that grows the same way; `ATOLL_PILL=1` floats it
+//! on any screen. `ATOLL_PORT` changes the port, `ATOLL_UPSTREAM` the API it relays to.
 //! `-- --scene demo` plays a scripted stream, `-- --scene pill` plays it on a screen without
 //! a notch, `-- --scene card` with the card open, and `-- --scene limit` waits out a rate limit.
 
@@ -139,9 +139,9 @@ struct State {
     think: f32,
     /// Each request's model and usage until it ends.
     requests: HashMap<u64, (String, Usage)>,
-    /// Dollars of every finished request since Notch opened.
+    /// Dollars of every finished request since Atoll opened.
     total_cost: f64,
-    /// Output tokens of every finished request since Notch opened.
+    /// Output tokens of every finished request since Atoll opened.
     total_out: u64,
     t: f32,
     last_t: f64,
@@ -637,13 +637,13 @@ fn diff_labels(s: &State, right: f32, y: f32, alpha: f32, labels: &mut Vec<Label
 fn setup(s: &mut State, waker: Waker) {
     let _ = s.shared.waker.set(waker.clone());
     if rune::is_headless() || s.demo.is_some() { return }
-    let port = std::env::var("NOTCH_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8788u16);
-    let upstream = std::env::var("NOTCH_UPSTREAM").unwrap_or_else(|_| "https://api.anthropic.com".into());
+    let port = std::env::var("ATOLL_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8788u16);
+    let upstream = std::env::var("ATOLL_UPSTREAM").unwrap_or_else(|_| "https://api.anthropic.com".into());
     let inbox = s.inbox.clone();
     let sink: proxy::Sink = Arc::new(move |ev| { inbox.lock().unwrap().push(ev); waker() });
     match proxy::serve(port, upstream.trim_end_matches('/').to_string(), sink) {
-        Ok(()) => eprintln!("notch: ANTHROPIC_BASE_URL=http://127.0.0.1:{port} claude"),
-        Err(e) => { eprintln!("notch: can't listen on {port}: {e}"); s.failed = 1.0 }
+        Ok(()) => eprintln!("atoll: ANTHROPIC_BASE_URL=http://127.0.0.1:{port} claude"),
+        Err(e) => { eprintln!("atoll: can't listen on {port}: {e}"); s.failed = 1.0 }
     }
 }
 
@@ -698,7 +698,7 @@ fn main() {
         ],
         setup: Some(setup),
         poll: Some(poll),
-        ..AppSpec::new("Notch", (320.0, 40.0), State::default, view)
+        ..AppSpec::new("Atoll", (320.0, 40.0), State::default, view)
     };
     rune::run_windows_with(RunOptions { accessory: true }, move |_| {
         let screen = screen::menu_screen();
@@ -719,7 +719,7 @@ fn main() {
         let mut watching = false;
         // AppKit moves a new window out from under the menu bar before its level is raised;
         // placed again once it sits above the menu bar, it stays flush with the screen's top.
-        vec![WindowSpec::from_app("notch", app).configured_options(options.macos(native))
+        vec![WindowSpec::from_app("atoll", app).configured_options(options.macos(native))
             .on_ready(move |w| {
                 w.set_position(screen.position());
                 if std::mem::replace(&mut watching, true) { return }
