@@ -526,7 +526,8 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
     let caps = rune::text::ink("H", LABEL).map_or(lh * 0.5, |i| i.bounds[1] + i.bounds[3] * 0.5);
     let row_y = cy - caps;
     // The wings' content fades in only once they have room for it.
-    let a = ((g.half - nw * 0.5 - 24.0) / 20.0).clamp(0.0, 1.0);
+    // The card's closing squash dips below the wings' resting width; it shouldn't fade them.
+    let a = (((g.half - nw * 0.5).max(s.wing) - 24.0) / 20.0).clamp(0.0, 1.0);
     if a > 0.0 {
         let (work, wait) = (a * (1.0 - s.wait_k), a * s.wait_k);
         let color = if s.failed > 0.05 { oklch(0.68, 0.19, 25.0) } else { tint(s) };
