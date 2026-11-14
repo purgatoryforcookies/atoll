@@ -85,7 +85,7 @@ fn a_turn_counts_its_output_and_the_ring_reads_the_context() {
     let mut s = State::default();
     let usage = |output, cache_read| proxy::Usage { input: 10, cache_read, output, ..Default::default() };
     for (id, reason) in [(1, "tool_use"), (2, "end_turn")] {
-        s.apply(Ev::Start { id, model: "claude-opus".into(), window: 200_000, session: String::new() });
+        s.apply(Ev::Start { id, model: "claude-opus-5-5".into(), window: 200_000, session: String::new() });
         s.apply(Ev::Usage { id, usage: usage(1_200, 99_990) });
         s.apply(Ev::Stop { id, reason: reason.into() });
         s.apply(Ev::End { id, status: 200 });
@@ -96,7 +96,7 @@ fn a_turn_counts_its_output_and_the_ring_reads_the_context() {
     let one = 10.0 * 4e-6 + 99_990.0 * 0.2e-6 + 1_200.0 * 20e-6;
     assert!((s.turn().1 - 2.0 * one).abs() < 1e-9 && s.total_cost == s.turn().1);
     // The next turn counts from zero, but the total keeps counting; a 1M request reads its ring against 1M.
-    s.apply(Ev::Start { id: 3, model: "claude-opus".into(), window: 1_000_000, session: String::new() });
+    s.apply(Ev::Start { id: 3, model: "claude-opus-5-5".into(), window: 1_000_000, session: String::new() });
     s.apply(Ev::Usage { id: 3, usage: usage(0, 300_000) });
     assert_eq!(s.turn_tokens(), "");
     assert!((s.filled() - 0.3).abs() < 1e-3 && s.total_cost == 2.0 * one && s.total_out == 2_400);
@@ -437,7 +437,35 @@ fn usage_read_across_the_stream_prices_the_request() {
     assert_eq!(*usage, proxy::Usage { input: 3, output: 512, cache_read: 41_210, cache_write: 2048, cache_write_1h: 2048 });
     assert!(evs.contains(&Ev::Stop { id: 0, reason: "end_turn".into() }));
     // 3 × $4/M + 2048 × $8/M (an hour's cache write) + 41,210 × $0.20/M + 512 × $20/M.
-    assert!((ledger::price("claude-opus-5-5", usage) - 0.034878).abs() < 1e-9);
+    assert!((ledger::Prices::default().price("claude-opus-5-5", usage).unwrap() - 0.034878).abs() < 1e-9);
+}
+
+#[test]
+fn a_model_the_list_doesnt_know_stays_unpriced_until_set_then_counts_what_it_spent() {
+    assert_eq!(ledger::id("claude-opus-5-5[1m]"), "opus-5-5");
+    assert_eq!(ledger::id("us.anthropic.claude-opus-4-5-20251101-v1:0"), "opus-4-5");
+    assert_eq!(ledger::id("claude-sonnet-4-5@20250929"), "sonnet-4-5");
+    let p = ledger::Prices::default();
+    // A newer version isn't priced as its family's last one.
+    assert!(p.rates("claude-opus-5-7", 0).is_none() && p.rates("claude-opus-5-5-20261001", 0).is_some());
+    assert_eq!(ledger::seed("opus-5-7"), [4.0, 20.0, 0.20]);
+    assert_eq!([ledger::step(4.0, true), ledger::step(4.0, false), ledger::step(3.9, true), ledger::step(0.2, false), ledger::step(0.0, false)], [4.25, 3.75, 4.0, 0.0, 0.0]);
+
+    let mut s = State::default();
+    let usage = proxy::Usage { input: 1_000_000, output: 100_000, ..Default::default() };
+    s.apply(Ev::Start { id: 1, model: "claude-opus-5-7".into(), window: 200_000, session: "a".into() });
+    s.apply(Ev::Usage { id: 1, usage });
+    s.apply(Ev::Stop { id: 1, reason: "end_turn".into() });
+    s.apply(Ev::End { id: 1, status: 200 });
+    assert_eq!((s.total_out, s.total_cost, s.turn().1), (100_000, 0.0, 0.0));
+    assert!(s.turn_unpriced());
+    assert_eq!(prices::cost(s.total_cost, !s.unpriced.is_empty()), "Unpriced");
+    assert_eq!(prices::models(&s), ["opus-5-7"]);
+    // Set at $5 in and $25 out: the turn and the total take what it already spent.
+    s.set_price("opus-5-7", [5.0, 25.0, 0.5]);
+    assert!(s.unpriced.is_empty() && !s.turn_unpriced());
+    assert!((s.total_cost - 7.5).abs() < 1e-9 && (s.turn().1 - 7.5).abs() < 1e-9);
+    assert_eq!(prices::cost(s.total_cost, false), "$7.50");
 }
 
 /// A fake API that sends `answer` to one request, then holds the connection open for `hold`;
@@ -542,4 +570,23 @@ fn the_guide_shows_until_settings_send_claude_code_to_atolls_port_and_a_request_
     let mut s = State { guide: Some(crate::guide::Guide::new(8788)), expanded: true, ..State::default() };
     s.apply(Ev::Start { id: 1, model: "claude-opus-5-5".into(), window: 200_000, session: String::new() });
     assert!(s.guide.is_none());
+}
+
+#[test]
+fn a_held_stepper_repeats_faster_the_longer_its_held_and_lets_go_off_the_island() {
+    let mut s = State { pricing: true, hover: true, ..State::default() };
+    s.stepper = Some(prices::Held { id: "opus-5-5".into(), col: 1, up: true, since: 0.0, next: 0.4 });
+    let output = |s: &State| s.prices.rates("opus-5-5", 0).unwrap()[1];
+    s.t = 0.3;
+    assert!(s.hold() && output(&s) == 20.0);
+    // From 0.4s, ten a second until 1.2s: 0.4, 0.5 … 1.1 is eight quarters.
+    s.t = 1.15;
+    s.hold();
+    assert_eq!(output(&s), 22.0);
+    // Then about twenty-five a second: well past the seven quarters ten a second would make.
+    s.t = 2.0;
+    s.hold();
+    assert!(output(&s) >= 26.5, "{}", output(&s));
+    s.hover = false;
+    assert!(!s.hold() && s.stepper.is_none());
 }

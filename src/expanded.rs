@@ -2,7 +2,7 @@
 //! and a pill for each session.
 
 use rune::{Color, El, LineCap, Shape, TextStyle, el};
-use crate::{INK, LABEL, Geom, Label, State, card, chat::{self, Chat}, ledger, rounded};
+use crate::{INK, LABEL, Geom, Label, State, card, chat::{self, Chat}, prices, rounded};
 
 /// The open card under the top row: the step of Claude's todo list, or its last few tool calls;
 /// the turn's time and context, and its output tokens and those since launch with what they cost
@@ -74,13 +74,12 @@ pub fn card_labels(s: &State, g: &Geom, alpha: f32, mut shape: Shape, labels: &m
     // A dash is a number not known yet; context is unknown until a request has come back.
     let filled = s.filled();
     let tokens = |n: u64| if n > 0 { card::tokens(n) } else { "–".into() };
-    let usd = |d: f64| if d > 0.0 { ledger::usd(d) } else { String::new() };
     // Output tokens lead; what they cost sits under them, smaller.
     let stats = [
         ("Time", took.unwrap_or_else(|| "–".into()), String::new()),
         ("Context", if filled > 0.0 { format!("{:.0}%", filled * 100.0) } else { "–".into() }, String::new()),
-        ("Output", tokens(out), usd(cost)),
-        ("Total", tokens(s.total_out), usd(s.total_cost)),
+        ("Output", tokens(out), prices::cost(cost, s.turn_unpriced())),
+        ("Total", tokens(s.total_out), prices::cost(s.total_cost, !s.unpriced.is_empty())),
     ];
     // The first starts at the left edge and the last ends at the right, with even gaps between.
     // Digits are measured as zeros, so the row holds still while the numbers count.

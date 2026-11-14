@@ -36,6 +36,7 @@ No plugins, no extension, no account: one setting points Claude Code at a relay 
 
 - **Live activity.** A coloured dot and label for thinking, writing or the tool being called, a waveform that moves with the stream, and a running `+42 −7` count of lines added and removed.
 - **Click to expand.** Opens a card with the turn's todo step or recent tool calls, turn time, context used, the turn's output tokens and the total since launch with what each cost, then model, effort and files.
+- **Prices you set.** Costs use Anthropic's list prices. **Prices…** in the menu bar item opens them on the island, three steppers a model; a model the list doesn't know reads "Unpriced" until you set it, then what it already spent is counted.
 - **Several sessions.** Each Claude Code session gets a pill along the bottom; the lit one owns the numbers. A session quiet for 15 minutes drops off the row.
 - **Rate limits.** Shows when the limit lifts, with a ring draining down to it.
 - **Permission prompts.** With the optional hook, the island turns amber and says "Needs you".

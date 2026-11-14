@@ -24,7 +24,8 @@
 //! without a notch it floats as a small pill that grows the same way; `ATOLL_PILL=1` floats it
 //! on any screen. `ATOLL_PORT` changes the port, `ATOLL_UPSTREAM` the API it relays to.
 //! `-- --scene demo` plays a scripted stream, `-- --scene pill` plays it on a screen without
-//! a notch, `-- --scene card` with the card open, `-- --scene limit` waits out a rate limit, and `-- --scene guide` opens the setup guide.
+//! a notch, `-- --scene card` with the card open, `-- --scene limit` waits out a rate limit, and `-- --scene guide` opens the setup guide, and
+//! `-- --scene prices` the prices, with a model nobody has priced.
 
 mod card;
 mod chat;
@@ -32,6 +33,7 @@ mod demo;
 mod expanded;
 mod guide;
 mod ledger;
+mod prices;
 mod proxy;
 mod screen;
 #[cfg(test)]
@@ -144,6 +146,12 @@ struct State {
     requests: HashMap<u64, (String, Usage)>,
     /// Dollars of every finished request since Atoll opened.
     total_cost: f64,
+    /// Rates set on the island, and finished requests on a model nobody has priced yet.
+    prices: ledger::Prices,
+    unpriced: Vec<prices::Unpriced>,
+    /// The card is open on the prices, and the stepper held down on it.
+    pricing: bool,
+    stepper: Option<prices::Held>,
     /// Output tokens of every finished request since Atoll opened.
     total_out: u64,
     t: f32,
@@ -249,11 +257,7 @@ impl State {
             }
             Ev::End { id, status } => {
                 self.live.remove(&id);
-                if let Some((model, usage)) = self.requests.remove(&id) {
-                    let cost = ledger::price(&model, &usage);
-                    (self.total_cost, self.total_out) = (self.total_cost + cost, self.total_out + usage.output);
-                    if let Some(c) = self.chat(id) { (c.turn_out, c.turn_cost) = (c.turn_out + usage.output, c.turn_cost + cost) }
-                }
+                self.charge(id);
                 self.sessions.remove(&id);
                 if status != 0 && !(200..300).contains(&status) { self.failed = 1.0 }
             }
@@ -380,17 +384,19 @@ impl State {
         // its resting size and springs back, as it bounces past open on the way out.
         let card = self.card.max(-0.2);
         let narrow = nw * 0.5 + self.wing.max(0.0);
-        let half = narrow + (narrow.max(CARD_W * 0.5) - narrow) * card;
+        let prices = self.pricing && self.guide.is_none();
+        let half = narrow + (narrow.max(if prices { prices::W } else { CARD_W } * 0.5) - narrow) * card;
         // Without a notch the pill floats below the top edge and stretches a little while it
         // resizes fast, as the iPhone's island does.
         let (top, row) = if flat { (PILL_TOP, PILL_H + (self.wing_v.abs() / 500.0).min(1.0) * STRETCH) } else { (0.0, nh) };
         let rest = if flat { row * 0.5 } else { (nh * 0.32).min(10.0) };
-        let card_h = CARD_H + if self.guide.is_some() || expanded::pilled(self).len() > 1 { PILLS } else { 0.0 };
+        let card_h = if prices { prices::height(prices::models(self).len()) }
+            else { CARD_H + if self.guide.is_some() || expanded::pilled(self).len() > 1 { PILLS } else { 0.0 } };
         Geom { w, wh, k, top, row, half, h: row + card_h * card, r: rest + (CARD_R - rest) * card.clamp(0.0, 1.0) }
     }
 
-    /// A press on the island opens the card, or folds it back.
-    fn press(&mut self) { self.expanded = !self.expanded }
+    /// A press on the island opens the card, or folds it back, on the stats again.
+    fn press(&mut self) { self.expanded = !self.expanded; self.pricing &= self.expanded }
 
     /// One frame of motion; true while anything still moves.
     fn step(&mut self, dt: f32) -> bool {
@@ -600,7 +606,11 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
     // The card's content fades in over the second half of its opening.
     let ca = ((s.card - 0.5) / 0.5).clamp(0.0, 1.0);
     if ca > 0.0 {
-        shape = match &s.guide { Some(guide) => guide::labels(guide, &g, s.t, ca, shape, &mut labels), None => expanded::card_labels(s, &g, ca, shape, &mut labels) };
+        shape = match &s.guide {
+            Some(guide) => guide::labels(guide, &g, s.t, ca, shape, &mut labels),
+            None if s.pricing => prices::labels(s, &g, ca, shape, &mut labels),
+            None => expanded::card_labels(s, &g, ca, shape, &mut labels),
+        };
     }
     let k = g.k;
     let mut root = el().w_full().h_full().child(canvas(shape.view_box(g.w, g.wh)).size(g.w * k, g.wh * k));
@@ -620,7 +630,7 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
         }
         root = root.child(ring);
     }
-    if ca > 0.0 && s.guide.is_none() { for p in expanded::pills(s, &g, ca) { root = root.child(p) } }
+    if ca > 0.0 && s.guide.is_none() && !s.pricing { for p in expanded::pills(s, &g, ca) { root = root.child(p) } }
     for l in labels {
         let x = if l.right { l.x - rune::text::measure(&l.text, &[], l.style, None).0 } else { l.x };
         let style = TextStyle { size: l.style.size * k, tracking: l.style.tracking * k, ..l.style };
@@ -635,6 +645,7 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
     root = root.child(hit);
     // The guide's buttons sit over the island's press, once they've faded in.
     if let Some(guide) = &s.guide && ca > 0.5 { for p in guide::presses(guide, &g, s.t) { root = root.child(p) } }
+    else if s.pricing && ca > 0.5 { for p in prices::presses(s, &g) { root = root.child(p) } }
     root.motion(Spring::NONE)
 }
 
@@ -656,6 +667,7 @@ fn port() -> u16 { std::env::var("ATOLL_PORT").ok().and_then(|p| p.parse().ok())
 fn setup(s: &mut State, waker: Waker) {
     let _ = s.shared.waker.set(waker.clone());
     if rune::is_headless() || s.demo.is_some() { return }
+    s.prices = ledger::Prices::load();
     let port = port();
     let upstream = std::env::var("ATOLL_UPSTREAM").unwrap_or_else(|_| "https://api.anthropic.com".into());
     let inbox = s.inbox.clone();
@@ -686,6 +698,7 @@ fn poll(s: &mut State, t: f64, tx: &mut Tx) -> bool {
     if s.shared.guide.swap(false, std::sync::atomic::Ordering::Relaxed) {
         (s.guide, s.expanded, got) = (Some(guide::Guide::new(port())), true, true);
     }
+    if s.shared.prices.swap(false, std::sync::atomic::Ordering::Relaxed) { (s.pricing, s.expanded, got) = (true, true, true) }
     // A new screen, or a scene that switched to the pill: size and place the window for it.
     if s.screen != s.placed && let Some(w) = s.shared.window.get() {
         w.resize_instant(s.screen.window());
@@ -704,7 +717,8 @@ fn poll(s: &mut State, t: f64, tx: &mut Tx) -> bool {
     // Open's spinner turns for its two seconds, then the island rests again. Asked before the
     // step, so the step that ends it still draws the frame that takes it away.
     let spinning = s.guide.as_ref().is_some_and(|g| g.opening(s.t));
-    let moving = s.step(dt) || s.demo.is_some() || spinning;
+    let holding = s.hold();
+    let moving = s.step(dt) || s.demo.is_some() || spinning || holding;
     tx.instant();
     // Folded, it stops asking for frames; the relay's and the pointer's wakers resume it.
     if moving { tx.wake_after(std::time::Duration::from_millis(if s.wave { 33 } else { 0 })) }
@@ -727,6 +741,11 @@ fn main() {
             ("card", |s| { s.expanded = true; s.demo = Some(0.0) }),
             ("limit", |s| s.limit = Some((95.0, 300.0))),
             ("guide", |s| { s.guide = Some(guide::Guide::new(8788)); s.expanded = true }),
+            ("prices", |s| {
+                for (id, model) in [("a", "claude-opus-5-5"), ("b", "claude-opus-5-7")] { s.chats.push(Chat { id: id.into(), model: model.into(), ..Chat::default() }) }
+                s.unpriced.push(prices::Unpriced { model: "claude-opus-5-7".into(), session: "b".into(), turn: None, usage: Usage::default() });
+                (s.pricing, s.expanded) = (true, true);
+            }),
         ],
         setup: Some(setup),
         poll: Some(poll),

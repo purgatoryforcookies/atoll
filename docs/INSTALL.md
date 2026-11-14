@@ -64,7 +64,7 @@ Then run step 2 again.
 
 ## Uninstalling
 
-Untick **Open at Login**, quit Atoll from its menu (⌘Q), delete `~/Applications/Atoll.app`, and remove the `ANTHROPIC_BASE_URL` and hook entries from your Claude Code settings.
+Untick **Open at Login**, quit Atoll from its menu (⌘Q), delete `~/Applications/Atoll.app`, and remove the `ANTHROPIC_BASE_URL` and hook entries from your Claude Code settings. Prices you set are in `~/Library/Application Support/Atoll/`.
 
 ## Configuration
 
@@ -75,3 +75,7 @@ Untick **Open at Login**, quit Atoll from its menu (⌘Q), delete `~/Application
 | `ATOLL_PILL`     | unset                       | `1` shows the floating pill even on a screen with a notch |
 
 These are read from the shell, so they only apply when you start the binary from a terminal (`ATOLL_PORT=9000 ~/Applications/Atoll.app/Contents/MacOS/atoll`), not when the app is opened from Finder or at login. If you change the port, change it in the Claude Code settings too.
+
+### Prices
+
+Costs use Anthropic's list prices as of the release. **Prices…** in the menu bar item opens the card on the models Claude Code has used, each with steppers for input, output and cache-read dollars per million tokens; the left half of a stepper takes $0.25 off, the right half adds $0.25, and holding either repeats, faster the longer you hold. A model the list doesn't know (a release newer than Atoll) is never guessed: its costs read "Unpriced" and its row starts dimmed from its family's price until you press **Set** or step it, and then the tokens it already used are counted. Prices you set are saved to `~/Library/Application Support/Atoll/prices.json`, a JSON object of model id to `[input, output, cache read]`.

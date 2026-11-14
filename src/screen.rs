@@ -60,7 +60,9 @@ impl Screen {
     pub fn layout(&self) -> (f32, f32) {
         let [w, h] = self.core();
         let body = if self.notch.is_some() { h } else { PILL_TOP + PILL_H + STRETCH };
-        (w + 2.0 * (WING + EAR), body + CARD_H + PILLS + 6.0)
+        // Open on the prices the card reaches furthest, and on a pill screen it is wider than the wings.
+        let card = (CARD_H + PILLS).max(crate::prices::height(crate::prices::ROWS));
+        ((w + 2.0 * (WING + EAR)).max(crate::prices::W + 2.0 * EAR), body + card + 6.0)
     }
 
     pub fn window(&self) -> (f32, f32) {
@@ -92,8 +94,9 @@ pub struct Shared {
     pub pointer: Mutex<Option<[f32; 2]>>,
     pub waker: OnceLock<Waker>,
     pub window: OnceLock<rune::WindowHandle>,
-    /// The menu asked for the setup guide.
+    /// The menu asked for the setup guide, or for the prices.
     pub guide: std::sync::atomic::AtomicBool,
+    pub prices: std::sync::atomic::AtomicBool,
 }
 
 impl Shared {
@@ -244,9 +247,9 @@ mod mac {
             let _: () = msg_send![image, setAccessibilityDescription: &*name];
             let _: () = msg_send![button, setImage: image];
             let menu: Retained<AnyObject> = msg_send_id![class!(NSMenu), new];
-            if let Some(guide) = guide_item() {
-                let _: () = msg_send![&*menu, addItem: &*guide];
-                std::mem::forget(guide);
+            for item in [guide_item(), prices_item()].into_iter().flatten() {
+                let _: () = msg_send![&*menu, addItem: &*item];
+                std::mem::forget(item);
             }
             if let Some(login) = login_item() {
                 let _: () = msg_send![&*menu, addItem: &*login];
@@ -268,21 +271,37 @@ mod mac {
 
     /// "Connect Claude Code…", which opens the card on the setup guide again.
     fn guide_item() -> Option<Retained<AnyObject>> {
+        extern "C" fn act(_: *mut AnyObject, _: objc2::runtime::Sel, _: *mut AnyObject) {
+            if let Some(shared) = SHARED.get() {
+                shared.guide.store(true, std::sync::atomic::Ordering::Relaxed);
+                shared.wake();
+            }
+        }
+        action_item("AtollGuideTarget", "Connect Claude Code…", act)
+    }
+
+    /// "Prices…", which opens the card on the models' prices.
+    fn prices_item() -> Option<Retained<AnyObject>> {
+        extern "C" fn act(_: *mut AnyObject, _: objc2::runtime::Sel, _: *mut AnyObject) {
+            if let Some(shared) = SHARED.get() {
+                shared.prices.store(true, std::sync::atomic::Ordering::Relaxed);
+                shared.wake();
+            }
+        }
+        action_item("AtollPricesTarget", "Prices…", act)
+    }
+
+    /// A menu item titled `title` that calls `act`, through a target class registered once as `class`.
+    fn action_item(class: &str, title: &str, act: extern "C" fn(*mut AnyObject, objc2::runtime::Sel, *mut AnyObject)) -> Option<Retained<AnyObject>> {
         // SAFETY: main thread; a target class registered once with one method of the signature
         // AppKit sends an action with.
         unsafe {
-            extern "C" fn guide(_: &AnyObject, _: objc2::runtime::Sel, _: *mut AnyObject) {
-                if let Some(shared) = SHARED.get() {
-                    shared.guide.store(true, std::sync::atomic::Ordering::Relaxed);
-                    shared.wake();
-                }
-            }
-            let mut builder = objc2::declare::ClassBuilder::new("AtollGuideTarget", class!(NSObject))?;
-            builder.add_method(sel!(guide:), guide as extern "C" fn(_, _, _));
+            let mut builder = objc2::declare::ClassBuilder::new(class, class!(NSObject))?;
+            builder.add_method(sel!(act:), act);
             let target: Retained<AnyObject> = msg_send_id![builder.register(), new];
-            let title = NSString::from_str("Connect Claude Code…");
+            let title = NSString::from_str(title);
             let item: Retained<AnyObject> = msg_send_id![msg_send_id![class!(NSMenuItem), alloc],
-                initWithTitle: &*title, action: sel!(guide:), keyEquivalent: &*NSString::from_str("")];
+                initWithTitle: &*title, action: sel!(act:), keyEquivalent: &*NSString::from_str("")];
             let _: () = msg_send![&*item, setTarget: &*target];
             // The menu item holds its target weakly; it lives for the process.
             std::mem::forget(target);

@@ -21,6 +21,7 @@ cargo run --release -- --scene pill    # the same, as a floating pill
 cargo run --release -- --scene card    # with the card open
 cargo run --release -- --scene limit   # waiting out a rate limit
 cargo run --release -- --scene guide   # the setup guide the card opens on at first launch
+cargo run --release -- --scene prices  # the prices, with a model nobody has priced
 ```
 
 ## Checks
