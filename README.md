@@ -62,6 +62,8 @@ See [INSTALL.md](docs/INSTALL.md) for updating, uninstalling and configuration, 
 
 ## Privacy
 
+Atoll collects no data: no analytics, no telemetry, no update checks. The only server it contacts is the Claude API (`api.anthropic.com`, or whatever you set `ATOLL_UPSTREAM` to), to forward Claude Code's own requests.
+
 The relay only listens on `127.0.0.1` and forwards requests upstream as they are, including your API key or login. Atoll reads the streamed responses to animate the island and keeps nothing on disk.
 
 ## Credits
