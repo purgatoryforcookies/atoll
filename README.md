@@ -30,6 +30,7 @@ No plugins, no extension, no account: one setting points Claude Code at a relay 
 | **Editing**      | <img src="docs/editing.png" width="461" alt="Edit, with a blue dot, +17 −3 and a waveform"> |
 | **Your turn**    | <img src="docs/your-turn.png" width="461" alt="Your turn, with a green dot and +42 −7">     |
 | **Rate limited** | <img src="docs/rate-limit.png" width="461" alt="Back in 1m 33s, with a draining ring">      |
+| **External display** | <img src="docs/external.png" width="461" alt="On a screen without a notch: a floating pill reading Edit, +17 −3 and a waveform"> |
 
 ## Features
 

@@ -61,7 +61,7 @@ The images in `docs/` are headless renders of the scenes:
 cargo run --release -- --scene card --snap docs/card.png --at 4.5 --scale 2
 ```
 
-The single-line shots are taken the same way (`demo` at 0.6, 3 and 6 seconds, `limit` at 2) and cropped to their top 72 pixels.
+The single-line shots are taken the same way (`demo` at 0.6, 3 and 6 seconds, `limit` at 2) and cropped to their top 72 pixels. `external.png` is `pill` at 3 seconds, cropped to its top 118.
 
 ## Icon
 
