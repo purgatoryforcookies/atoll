@@ -39,7 +39,7 @@ Push a version tag and `.github/workflows/release.yml` tests, builds a universal
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-It needs these repository secrets (Settings → Secrets and variables → Actions):
+Only this workflow needs an Apple developer account. Everything else, including `scripts/bundle.sh`, signs ad hoc and needs no setup. It needs these repository secrets (Settings → Secrets and variables → Actions):
 
 | Secret                       | What                                                                                                                                      |
 | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
