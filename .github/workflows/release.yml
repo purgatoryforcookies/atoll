@@ -8,6 +8,11 @@ on:
 permissions:
   contents: write
 
+# A newer tag cancels a release still running, so only one runs at once.
+concurrency:
+  group: release
+  cancel-in-progress: true
+
 jobs:
   # Path filters ignore tags, so a docs-only tag is caught by diffing against the previous one.
   changes:
