@@ -1,4 +1,4 @@
-# Push a tag like v0.1.0 to build, sign, notarize and publish Atoll-<version>.dmg as a GitHub release.
+# to release: git tag v0.1.0 && git push origin v0.1.0
 name: Release
 
 on:
