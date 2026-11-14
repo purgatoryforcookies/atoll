@@ -202,7 +202,8 @@ impl State {
         }
         match ev {
             // shortcut: Haiku marks a side request; a session whose main model is Haiku shows nothing.
-            Ev::Start { id, model, .. } if model.contains("haiku") => { self.side.insert(id); }
+            // A request with no model, such as a check on `/api/hello`, reads as its path: not a turn either.
+            Ev::Start { id, model, .. } if model.contains("haiku") || model.starts_with('/') => { self.side.insert(id); }
             Ev::Start { id, model, window, session } => {
                 let live: HashSet<&String> = self.sessions.values().collect();
                 self.chats.retain(|c| now - c.seen < chat::IDLE || live.contains(&c.id));

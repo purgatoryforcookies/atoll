@@ -39,6 +39,10 @@ fn a_finished_turn_waits_for_you_and_a_tool_call_does_not() {
     s.apply(Ev::Start { id: 2, model: "claude-haiku".into(), window: 200_000, session: String::new() });
     s.apply(Ev::Stop { id: 2, reason: "end_turn".into() });
     s.apply(Ev::End { id: 2, status: 200 });
+    // Nor does a request with no model, which reads as its path, nor does it give the session a model.
+    s.apply(Ev::Start { id: 5, model: "/api/hello".into(), window: 200_000, session: String::new() });
+    s.apply(Ev::End { id: 5, status: 200 });
+    assert!(s.chats.iter().all(|c| c.model == "claude-opus"));
     for _ in 0..120 { s.step(1.0 / 60.0); }
     assert!(s.running && !s.waiting && s.label == "graft_find_code" && s.wing > 56.0);
     s.apply(Ev::Start { id: 3, model: "claude-opus".into(), window: 200_000, session: String::new() });
