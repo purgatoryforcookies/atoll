@@ -525,3 +525,21 @@ fn a_session_quiet_fifteen_minutes_leaves_the_pill_row() {
     // "a" went quiet; "b" just spoke.
     assert_eq!(expanded::pilled(&s).iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["b"]);
 }
+
+#[test]
+fn the_guide_shows_until_settings_send_claude_code_to_atolls_port_and_a_request_closes_it() {
+    let pasted = crate::guide::snippet(8788);
+    assert!(crate::guide::configured(&pasted, 8788));
+    assert!(!crate::guide::configured(&pasted, 9000));
+    assert!(crate::guide::configured(r#"{ "model": "opus", "env": { "ANTHROPIC_BASE_URL": "http://localhost:8788/" } }"#, 8788));
+    assert!(!crate::guide::configured(r#"{ "env": { "ANTHROPIC_BASE_URL": "https://gateway.example.com" } }"#, 8788));
+    assert!(!crate::guide::configured("not json", 8788));
+    assert!(pasted.contains("http://127.0.0.1:8788/atoll") && pasted.contains("permission_prompt"));
+    let mut g = crate::guide::Guide::new(8788);
+    assert!(!g.opening(0.0));
+    g.opened = Some(3.0);
+    assert!(g.opening(4.9) && !g.opening(5.0));
+    let mut s = State { guide: Some(crate::guide::Guide::new(8788)), expanded: true, ..State::default() };
+    s.apply(Ev::Start { id: 1, model: "claude-opus-5-5".into(), window: 200_000, session: String::new() });
+    assert!(s.guide.is_none());
+}

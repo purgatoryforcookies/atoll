@@ -28,7 +28,9 @@ The first build takes a few minutes. The app is signed ad hoc, which is enough t
 
 ## 3. Point Claude Code at Atoll
 
-Add this to `~/.claude/settings.json` (all projects) or a project's `.claude/settings.local.json`:
+Until Claude Code's settings point at it, Atoll opens on a guide that walks you through this: **Open** opens `~/.claude/settings.json` in VS Code, or without it in your `$EDITOR` (nano if unset) in Terminal (making the file if it's missing), **Copy** puts the lines below on the clipboard, and **Done** closes the guide. The guide goes away by itself once a request comes through. **Connect Claude Code…** in the menu bar item opens it again.
+
+To do it by hand, add this to `~/.claude/settings.json` (all projects) or a project's `.claude/settings.local.json`:
 
 ```json
 {

@@ -50,12 +50,7 @@ Atoll runs a small relay on `127.0.0.1` that passes every Claude API call throug
 Requires macOS 13 or later and [Claude Code](https://claude.com/claude-code).
 
 1. **Download** the `.dmg` from the [latest release](https://github.com/purgatoryforcookies/atoll/releases/latest), open it and drag Atoll onto Applications. Or [build it from source](docs/INSTALL.md).
-2. **Point Claude Code at it** in `~/.claude/settings.json`, plus the optional permission hook ([INSTALL.md](docs/INSTALL.md#3-point-claude-code-at-atoll)):
-
-   ```json
-   "env": { "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788" }
-   ```
-
+2. **Point Claude Code at it.** Open Atoll and the island opens on a short guide: open your Claude Code settings, paste the lines it copies, done. Or do it by hand ([INSTALL.md](docs/INSTALL.md#3-point-claude-code-at-atoll)).
 3. Start a new Claude Code session and watch the notch.
 
 See [INSTALL.md](docs/INSTALL.md) for updating, uninstalling and configuration, and [DEVELOP.md](docs/DEVELOP.md) for running from source, demo scenes and tests.

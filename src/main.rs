@@ -24,12 +24,13 @@
 //! without a notch it floats as a small pill that grows the same way; `ATOLL_PILL=1` floats it
 //! on any screen. `ATOLL_PORT` changes the port, `ATOLL_UPSTREAM` the API it relays to.
 //! `-- --scene demo` plays a scripted stream, `-- --scene pill` plays it on a screen without
-//! a notch, `-- --scene card` with the card open, and `-- --scene limit` waits out a rate limit.
+//! a notch, `-- --scene card` with the card open, `-- --scene limit` waits out a rate limit, and `-- --scene guide` opens the setup guide.
 
 mod card;
 mod chat;
 mod demo;
 mod expanded;
+mod guide;
 mod ledger;
 mod proxy;
 mod screen;
@@ -148,6 +149,8 @@ struct State {
     t: f32,
     last_t: f64,
     demo: Option<f32>,
+    /// The setup guide, which the card shows instead until Claude Code is sent through Atoll.
+    guide: Option<guide::Guide>,
 }
 
 /// Where the island is this frame, in layout points: the window's size and zoom, the top
@@ -206,6 +209,7 @@ impl State {
                 self.last = session.clone();
                 self.sessions.insert(id, session);
                 self.live.insert(id);
+                self.guide = None;
                 self.quiet = 0.0;
                 (self.waiting, self.running, self.needs) = (false, false, false);
             }
@@ -381,7 +385,7 @@ impl State {
         // resizes fast, as the iPhone's island does.
         let (top, row) = if flat { (PILL_TOP, PILL_H + (self.wing_v.abs() / 500.0).min(1.0) * STRETCH) } else { (0.0, nh) };
         let rest = if flat { row * 0.5 } else { (nh * 0.32).min(10.0) };
-        let card_h = CARD_H + if expanded::pilled(self).len() > 1 { PILLS } else { 0.0 };
+        let card_h = CARD_H + if self.guide.is_some() || expanded::pilled(self).len() > 1 { PILLS } else { 0.0 };
         Geom { w, wh, k, top, row, half, h: row + card_h * card, r: rest + (CARD_R - rest) * card.clamp(0.0, 1.0) }
     }
 
@@ -595,7 +599,9 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
     }
     // The card's content fades in over the second half of its opening.
     let ca = ((s.card - 0.5) / 0.5).clamp(0.0, 1.0);
-    if ca > 0.0 { shape = expanded::card_labels(s, &g, ca, shape, &mut labels) }
+    if ca > 0.0 {
+        shape = match &s.guide { Some(guide) => guide::labels(guide, &g, s.t, ca, shape, &mut labels), None => expanded::card_labels(s, &g, ca, shape, &mut labels) };
+    }
     let k = g.k;
     let mut root = el().w_full().h_full().child(canvas(shape.view_box(g.w, g.wh)).size(g.w * k, g.wh * k));
     // The dot, its glow and the context ring are round boxes rather than polygons, so their edges
@@ -614,7 +620,7 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
         }
         root = root.child(ring);
     }
-    if ca > 0.0 { for p in expanded::pills(s, &g, ca) { root = root.child(p) } }
+    if ca > 0.0 && s.guide.is_none() { for p in expanded::pills(s, &g, ca) { root = root.child(p) } }
     for l in labels {
         let x = if l.right { l.x - rune::text::measure(&l.text, &[], l.style, None).0 } else { l.x };
         let style = TextStyle { size: l.style.size * k, tracking: l.style.tracking * k, ..l.style };
@@ -626,7 +632,10 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
     let hit = el().absolute(g.left() * k, g.top * k).size(g.half * 2.0 * k, g.h * k)
         // The springs move in `poll`, so a press asks for the next frame rather than waiting for a wake.
         .on_press_tx(|s: &mut State, tx: &mut Tx| { s.press(); tx.wake_after(std::time::Duration::ZERO) });
-    root.child(hit).motion(Spring::NONE)
+    root = root.child(hit);
+    // The guide's buttons sit over the island's press, once they've faded in.
+    if let Some(guide) = &s.guide && ca > 0.5 { for p in guide::presses(guide, &g, s.t) { root = root.child(p) } }
+    root.motion(Spring::NONE)
 }
 
 /// The counting tally, `+42 −7`, right-aligned to `x`; returns where its left edge lands.
@@ -641,15 +650,23 @@ fn diff_labels(s: &State, right: f32, y: f32, alpha: f32, labels: &mut Vec<Label
     if x < right { x + DIFF_GAP } else { right }
 }
 
+/// The relay's port: `ATOLL_PORT`, or 8788.
+fn port() -> u16 { std::env::var("ATOLL_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8788) }
+
 fn setup(s: &mut State, waker: Waker) {
     let _ = s.shared.waker.set(waker.clone());
     if rune::is_headless() || s.demo.is_some() { return }
-    let port = std::env::var("ATOLL_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8788u16);
+    let port = port();
     let upstream = std::env::var("ATOLL_UPSTREAM").unwrap_or_else(|_| "https://api.anthropic.com".into());
     let inbox = s.inbox.clone();
     let sink: proxy::Sink = Arc::new(move |ev| { inbox.lock().unwrap().push(ev); waker() });
     match proxy::serve(port, upstream.trim_end_matches('/').to_string(), sink) {
-        Ok(()) => eprintln!("atoll: ANTHROPIC_BASE_URL=http://127.0.0.1:{port} claude"),
+        Ok(()) => {
+            eprintln!("atoll: ANTHROPIC_BASE_URL=http://127.0.0.1:{port} claude");
+            // Claude Code isn't sent through Atoll yet: open the card on the guide to setting it up.
+            let set = guide::settings().and_then(|p| std::fs::read_to_string(p).ok()).is_some_and(|t| guide::configured(&t, port));
+            if !set { (s.guide, s.expanded) = (Some(guide::Guide::new(port)), true) }
+        }
         Err(e) => { eprintln!("atoll: can't listen on {port}: {e}"); s.failed = 1.0 }
     }
 }
@@ -665,6 +682,10 @@ fn poll(s: &mut State, t: f64, tx: &mut Tx) -> bool {
     let mut got = !evs.is_empty();
     for ev in evs { s.apply(ev) }
     if let Some(screen) = s.shared.screen.lock().unwrap().take() { s.screen = screen; got = true }
+    // Chosen from the menu, the guide opens even when the settings already send Claude Code here.
+    if s.shared.guide.swap(false, std::sync::atomic::Ordering::Relaxed) {
+        (s.guide, s.expanded, got) = (Some(guide::Guide::new(port())), true, true);
+    }
     // A new screen, or a scene that switched to the pill: size and place the window for it.
     if s.screen != s.placed && let Some(w) = s.shared.window.get() {
         w.resize_instant(s.screen.window());
@@ -680,7 +701,10 @@ fn poll(s: &mut State, t: f64, tx: &mut Tx) -> bool {
         if let Some(w) = s.shared.window.get() { let _ = w.set_click_through(!hover); }
     }
     demo::demo(s, dt);
-    let moving = s.step(dt) || s.demo.is_some();
+    // Open's spinner turns for its two seconds, then the island rests again. Asked before the
+    // step, so the step that ends it still draws the frame that takes it away.
+    let spinning = s.guide.as_ref().is_some_and(|g| g.opening(s.t));
+    let moving = s.step(dt) || s.demo.is_some() || spinning;
     tx.instant();
     // Folded, it stops asking for frames; the relay's and the pointer's wakers resume it.
     if moving { tx.wake_after(std::time::Duration::from_millis(if s.wave { 33 } else { 0 })) }
@@ -702,6 +726,7 @@ fn main() {
             ("pill", |s| { s.screen.notch = None; s.demo = Some(0.0) }),
             ("card", |s| { s.expanded = true; s.demo = Some(0.0) }),
             ("limit", |s| s.limit = Some((95.0, 300.0))),
+            ("guide", |s| { s.guide = Some(guide::Guide::new(8788)); s.expanded = true }),
         ],
         setup: Some(setup),
         poll: Some(poll),
@@ -732,7 +757,7 @@ fn main() {
                 if std::mem::replace(&mut watching, true) { return }
                 let _ = shared.window.set(w.clone());
                 screen::watch_pointer(shared.clone());
-                screen::menu_bar_item();
+                screen::menu_bar_item(shared.clone());
                 let shared = shared.clone();
                 // A display plugged in or out, or the menu bar moved: follow the menu bar's screen;
                 // `poll` resizes and places the window for it.

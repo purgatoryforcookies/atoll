@@ -92,6 +92,8 @@ pub struct Shared {
     pub pointer: Mutex<Option<[f32; 2]>>,
     pub waker: OnceLock<Waker>,
     pub window: OnceLock<rune::WindowHandle>,
+    /// The menu asked for the setup guide.
+    pub guide: std::sync::atomic::AtomicBool,
 }
 
 impl Shared {
@@ -141,13 +143,60 @@ pub fn watch_pointer(shared: std::sync::Arc<Shared>) {
     let _ = shared;
 }
 
-/// A capsule in the menu bar whose menu opens the app at login and quits it: with no Dock icon
-/// and a window that lets clicks through, it's the way out. Main thread.
+/// Opens a file in VS Code, or without it in the shell's `$EDITOR` (nano when unset) in Terminal,
+/// rather than whatever claims `.json`, which is often Xcode; TextEdit if even Terminal won't
+/// open. A missing file is made first, as an empty JSON object.
+pub fn open(path: &std::path::Path) {
+    #[cfg(target_os = "macos")]
+    {
+        let path = path.to_owned();
+        // Off the main thread: `open` takes a moment to answer whether an app took the file.
+        std::thread::spawn(move || {
+            if !path.exists() && let Some(dir) = path.parent() {
+                let _ = std::fs::create_dir_all(dir).and_then(|()| std::fs::write(&path, "{}\n"));
+            }
+            let run = |args: &[&std::ffi::OsStr]| std::process::Command::new("open").args(args).status().is_ok_and(|s| s.success());
+            if run(&["-b".as_ref(), "com.microsoft.VSCode".as_ref(), path.as_os_str()]) { return }
+            // A `.command` file opens in Terminal without asking to control it, as a script would.
+            let script = std::env::temp_dir().join("atoll-settings.command");
+            let quoted = format!("'{}'", path.to_string_lossy().replace('\'', r"'\''"));
+            let wrote = std::fs::write(&script, format!("#!/bin/sh\nexec ${{EDITOR:-nano}} {quoted}\n")).and_then(|()| {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700))
+            });
+            if wrote.is_ok() && run(&["-a".as_ref(), "Terminal".as_ref(), script.as_os_str()]) { return }
+            run(&["-t".as_ref(), path.as_os_str()]);
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = path;
+}
+
+/// Puts text on the clipboard.
+pub fn copy(text: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        use std::io::Write;
+        let text = text.to_owned();
+        std::thread::spawn(move || {
+            let Ok(mut pb) = std::process::Command::new("pbcopy").stdin(std::process::Stdio::piped()).spawn() else { return };
+            if let Some(mut stdin) = pb.stdin.take() { let _ = stdin.write_all(text.as_bytes()); }
+            let _ = pb.wait();
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = text;
+}
+
+/// A capsule in the menu bar whose menu reopens the setup guide, opens the app at login and quits
+/// it: with no Dock icon and a window that lets clicks through, it's the way out. Main thread.
 // shortcut: `rune::Tray` has no macOS backend yet; this is AppKit directly. Move to `rune::Tray`
 // once it supports macOS.
-pub fn menu_bar_item() {
+pub fn menu_bar_item(shared: std::sync::Arc<Shared>) {
     #[cfg(target_os = "macos")]
-    mac::menu_bar_item();
+    mac::menu_bar_item(shared);
+    #[cfg(not(target_os = "macos"))]
+    let _ = shared;
 }
 
 #[cfg(target_os = "macos")]
@@ -156,8 +205,9 @@ mod mac {
     use objc2::{class, msg_send, msg_send_id, rc::Retained, runtime::{AnyObject, Bool}, sel};
     use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize, NSString};
 
-    pub(super) fn menu_bar_item() {
+    pub(super) fn menu_bar_item(shared: Arc<Shared>) {
         if MainThreadMarker::new().is_none() { return }
+        let _ = SHARED.set(shared);
         // SAFETY: main thread; AppKit's status bar, an image drawn by a block AppKit keeps and calls
         // on the main thread, and a menu whose one item sends `terminate:` up the responder chain to
         // the application. The item and its menu live for the process, so they are leaked.
@@ -194,6 +244,10 @@ mod mac {
             let _: () = msg_send![image, setAccessibilityDescription: &*name];
             let _: () = msg_send![button, setImage: image];
             let menu: Retained<AnyObject> = msg_send_id![class!(NSMenu), new];
+            if let Some(guide) = guide_item() {
+                let _: () = msg_send![&*menu, addItem: &*guide];
+                std::mem::forget(guide);
+            }
             if let Some(login) = login_item() {
                 let _: () = msg_send![&*menu, addItem: &*login];
                 let sep: *mut AnyObject = msg_send![class!(NSMenuItem), separatorItem];
@@ -206,6 +260,33 @@ mod mac {
             let _: () = msg_send![&*menu, addItem: &*quit];
             let _: () = msg_send![&*item, setMenu: &*menu];
             std::mem::forget((item, menu, quit));
+        }
+    }
+
+    /// What the menu's actions hand to the app; AppKit calls them with no way to carry it.
+    static SHARED: std::sync::OnceLock<Arc<Shared>> = std::sync::OnceLock::new();
+
+    /// "Connect Claude Code…", which opens the card on the setup guide again.
+    fn guide_item() -> Option<Retained<AnyObject>> {
+        // SAFETY: main thread; a target class registered once with one method of the signature
+        // AppKit sends an action with.
+        unsafe {
+            extern "C" fn guide(_: &AnyObject, _: objc2::runtime::Sel, _: *mut AnyObject) {
+                if let Some(shared) = SHARED.get() {
+                    shared.guide.store(true, std::sync::atomic::Ordering::Relaxed);
+                    shared.wake();
+                }
+            }
+            let mut builder = objc2::declare::ClassBuilder::new("AtollGuideTarget", class!(NSObject))?;
+            builder.add_method(sel!(guide:), guide as extern "C" fn(_, _, _));
+            let target: Retained<AnyObject> = msg_send_id![builder.register(), new];
+            let title = NSString::from_str("Connect Claude Code…");
+            let item: Retained<AnyObject> = msg_send_id![msg_send_id![class!(NSMenuItem), alloc],
+                initWithTitle: &*title, action: sel!(guide:), keyEquivalent: &*NSString::from_str("")];
+            let _: () = msg_send![&*item, setTarget: &*target];
+            // The menu item holds its target weakly; it lives for the process.
+            std::mem::forget(target);
+            Some(item)
         }
     }
 
