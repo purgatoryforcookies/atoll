@@ -29,7 +29,7 @@ cargo test
 cargo clippy --all-targets
 ```
 
-CI (`.github/workflows/ci.yml`) runs both on every push to `main` and every pull request, with clippy warnings as errors.
+CI (`.github/workflows/ci.yml`) runs both on every push to `main` and every pull request, with clippy warnings as errors. A release runs it as its first job.
 
 ## Releasing
 
@@ -39,7 +39,7 @@ Push a version tag and `.github/workflows/release.yml` tests, builds a universal
 scripts/release.sh patch   # or minor, major
 ```
 
-It bumps the version past the last `v*` tag in `Cargo.toml` and `Cargo.lock`, has `claude -p` draft release notes from the commits since that tag (or lists the commits if `claude` isn't installed), opens them in `$EDITOR` for you to fix, then commits, tags with the notes and pushes. The release uses the tag's notes. Save an empty file to abort.
+It bumps the version past the last `v*` tag in `Cargo.toml` and `Cargo.lock`, has `claude -p` draft release notes from the commits since that tag (or lists the commits if `claude` isn't installed), opens them in `$EDITOR` for you to fix, then commits and pushes only a tag carrying the notes, so one workflow run does it all: CI, then the release, then moving `main` to the release commit. Save an empty file to abort.
 
 Only this workflow needs an Apple developer account. Everything else, including `scripts/bundle.sh`, signs ad hoc and needs no setup. It needs these repository secrets (Settings → Secrets and variables → Actions):
 

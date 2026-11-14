@@ -1,7 +1,7 @@
 #!/bin/sh
 # Cuts a release. Usage: scripts/release.sh patch|minor|major
 # Bumps Cargo.toml from the last v* tag, drafts notes with `claude -p` for you to edit,
-# then commits, tags and pushes; the tag starts .github/workflows/release.yml.
+# then commits and pushes only the tag; .github/workflows/release.yml moves main to it once released.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -9,6 +9,7 @@ case ${1:-} in patch|minor|major) ;; *) echo "usage: $0 patch|minor|major" >&2; 
 [ "$(git branch --show-current)" = main ] || { echo "not on main" >&2; exit 1; }
 [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "uncommitted changes" >&2; exit 1; }
 git fetch --quiet --tags origin
+[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || { echo "main differs from origin/main; push or pull first" >&2; exit 1; }
 
 PREV=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo v0.0.0)
 VERSION=$(echo "${PREV#v}" | awk -F. -v bump="$1" '{
@@ -29,5 +30,5 @@ cargo check --quiet # updates Cargo.lock
 git commit --quiet -m "Release $VERSION" Cargo.toml Cargo.lock
 # verbatim keeps markdown headings, which git would strip as comments
 git tag -a "v$VERSION" -F "$NOTES" --cleanup=verbatim
-git push --atomic origin main "v$VERSION"
-echo "pushed v$VERSION"
+git push origin "v$VERSION"
+echo "pushed v$VERSION; main follows once the release succeeds, then git pull"

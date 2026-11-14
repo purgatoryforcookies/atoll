@@ -28,15 +28,18 @@ jobs:
             echo "code=true" >> "$GITHUB_OUTPUT"
           fi
 
-  release:
+  ci:
     needs: changes
     if: needs.changes.outputs.code == 'true'
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: ci
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
       - run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 #v2.9.3
-      - run: cargo test
 
       - name: Import the Developer ID certificate
         env:
@@ -85,3 +88,7 @@ jobs:
         run: |
           git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
           gh release create "$GITHUB_REF_NAME" "dist/Atoll-$VERSION.dmg" --title "Atoll $VERSION" --notes-from-tag
+
+      # release.sh pushes only the tag; a push made with this token starts no other run, so CI doesn't repeat.
+      - name: Move main to the release commit
+        run: git push origin "$GITHUB_SHA:refs/heads/main"
