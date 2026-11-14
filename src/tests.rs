@@ -57,6 +57,30 @@ fn a_finished_turn_waits_for_you_and_a_tool_call_does_not() {
 }
 
 #[test]
+fn a_tool_call_that_never_hears_back_stops_drawing() {
+    let tool = |s: &mut State| {
+        s.apply(Ev::Start { id: 1, model: "claude-opus".into(), window: 200_000, session: String::new() });
+        s.apply(Ev::Block { id: 1, kind: Kind::Tool("Bash".into()) });
+        s.apply(Ev::Stop { id: 1, reason: "tool_use".into() });
+        s.apply(Ev::End { id: 1, status: 200 });
+    };
+    // Interrupted while the tool runs: the low wave draws at a quarter rate, then stops.
+    let mut s = State::default();
+    tool(&mut s);
+    for _ in 0..180 { s.step(1.0 / 60.0); }
+    assert!(s.wave && s.step(1.0 / 60.0));
+    let mut frames = 0;
+    while s.step(1.0 / 60.0) { frames += 1; assert!(frames < 60 * 130, "still drawing") }
+    // Asked to allow it and left unanswered: "Needs you" stays, but nothing is drawn.
+    let mut s = State::default();
+    tool(&mut s);
+    s.apply(Ev::Needs { session: String::new() });
+    let mut frames = 0;
+    while s.step(1.0 / 60.0) { frames += 1; assert!(frames < 600, "still drawing") }
+    assert_eq!(s.label, "Needs you");
+}
+
+#[test]
 fn a_turn_counts_its_output_and_the_ring_reads_the_context() {
     let mut s = State::default();
     let usage = |output, cache_read| proxy::Usage { input: 10, cache_read, output, ..Default::default() };

@@ -128,6 +128,8 @@ struct State {
     kicks: [f32; BARS],
     next_bar: usize,
     level: f32,
+    /// Only a running tool's low wave moves, which reads the same at a quarter of the frames.
+    wave: bool,
     failed: f32,
     /// The ring's eased share of the context window.
     ring: f32,
@@ -325,7 +327,8 @@ impl State {
     /// Sessions beyond the first with a request in flight.
     fn others(&self) -> usize { self.sessions.values().collect::<HashSet<_>>().len().saturating_sub(1) }
 
-    fn working(&self) -> bool { !self.live.is_empty() || self.running || (self.quiet < LINGER && !self.waiting) }
+    // An interrupted tool call never hears back, so a run counts only BUSY seconds; a prompt for you stays.
+    fn working(&self) -> bool { !self.live.is_empty() || (self.running && (self.needs || self.quiet < BUSY as f32)) || (self.quiet < LINGER && !self.waiting) }
 
     /// What the label beside the dot says while Claude works.
     fn what(&self) -> String {
@@ -448,8 +451,11 @@ impl State {
         if shut { self.card = open; self.card_v = 0.0 }
         if still && target == 0.0 && open == 0.0 { self.kind = None; self.label.clear() }
         // Waiting is still once its pulses end, so an unanswered turn draws nothing.
-        let idle = !self.working() && self.quiet > LINGER && (!self.waiting || self.waited > PULSE) && self.swap == 1.0 && self.wait_k == wait && self.ring == fill && self.shown == tally && self.think == think;
-        !(still && shut && idle) || self.failed > 0.01
+        let calm = still && shut && self.quiet > LINGER && (!self.waiting || self.waited > PULSE) && self.swap == 1.0 && self.wait_k == wait && self.ring == fill && self.shown == tally && self.think == think && self.failed <= 0.01;
+        // Asked to allow a tool, the bars fall still and the island holds "Needs you" without drawing.
+        let asked = self.needs && self.level < 1e-3 && self.bars.iter().all(|b| *b < 1e-3);
+        self.wave = calm && self.live.is_empty() && self.flow < 1.0;
+        !(calm && (!self.working() || asked))
     }
 }
 
@@ -677,7 +683,7 @@ fn poll(s: &mut State, t: f64, tx: &mut Tx) -> bool {
     let moving = s.step(dt) || s.demo.is_some();
     tx.instant();
     // Folded, it stops asking for frames; the relay's and the pointer's wakers resume it.
-    if moving { tx.wake_after(std::time::Duration::ZERO) }
+    if moving { tx.wake_after(std::time::Duration::from_millis(if s.wave { 33 } else { 0 })) }
     // A rate limit's countdown draws once a second, or once a minute while it reads in hours.
     else if let Some(rem) = s.limited() {
         let tick = if rem > 3600.0 { 60.0 } else { 1.0 };
