@@ -33,11 +33,13 @@ CI (`.github/workflows/ci.yml`) runs both on every push to `main` and every pull
 
 ## Releasing
 
-Push a version tag and `.github/workflows/release.yml` tests, builds a universal (Apple silicon and Intel) `Atoll.app` with `scripts/bundle.sh`, signs it with your Developer ID, packs it into a disk image with an Applications shortcut, signs, notarizes and staples the image, and publishes `Atoll-<version>.dmg` as a GitHub release. The tag sets the app's version:
+Push a version tag and `.github/workflows/release.yml` tests, builds a universal (Apple silicon and Intel) `Atoll.app` with `scripts/bundle.sh`, signs it with your Developer ID, packs it into a disk image with an Applications shortcut, signs, notarizes and staples the image, and publishes `Atoll-<version>.dmg` as a GitHub release. The tag sets the app's version. To cut one, from a clean `main`:
 
 ```sh
-git tag v0.1.0 && git push origin v0.1.0
+scripts/release.sh patch   # or minor, major
 ```
+
+It bumps the version past the last `v*` tag in `Cargo.toml` and `Cargo.lock`, has `claude -p` draft release notes from the commits since that tag (or lists the commits if `claude` isn't installed), opens them in `$EDITOR` for you to fix, then commits, tags with the notes and pushes. The release uses the tag's notes. Save an empty file to abort.
 
 Only this workflow needs an Apple developer account. Everything else, including `scripts/bundle.sh`, signs ad hoc and needs no setup. It needs these repository secrets (Settings → Secrets and variables → Actions):
 

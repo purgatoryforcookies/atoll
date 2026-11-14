@@ -1,4 +1,4 @@
-# to release: git tag v0.1.0 && git push origin v0.1.0
+# to release: scripts/release.sh patch|minor|major
 name: Release
 
 on:
@@ -81,4 +81,7 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" "dist/Atoll-$VERSION.dmg" --title "Atoll $VERSION" --generate-notes
+        # checkout can leave the tag lightweight; fetch the annotated one that carries the notes
+        run: |
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          gh release create "$GITHUB_REF_NAME" "dist/Atoll-$VERSION.dmg" --title "Atoll $VERSION" --notes-from-tag
