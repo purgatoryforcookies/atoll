@@ -24,7 +24,7 @@ Before finishing a change, run `cargo test` and `cargo clippy --all-targets`.
 
 ## Dependencies
 
-- [Rune](https://github.com/anomalyco/rune) comes from git, pinned by `rev` in `Cargo.toml` to a fork (`purgatoryforcookies/rune`) carrying one fix not yet upstream. Change the rev deliberately and run the tests and every scene after; point it back at `anomalyco/rune` once the fix lands there.
+- [Rune](https://github.com/anomalyco/rune) comes from git, pinned by `rev` in `Cargo.toml` to a fork (`purgatoryforcookies/rune`) carrying one fix not yet upstream. The fork exists for a suspected Rune bug: the pointer sampling meant for overlay windows reset the click-through of an app window adopted as a nonactivating panel, as the island is, undoing the click-through Atoll sets. The same commit adds `on_displays_changed`, so the island can follow screens and the menu bar as they change. Change the rev deliberately and run the tests and every scene after; point it back at `anomalyco/rune` once the fix lands there.
 - Don't add a dependency for what a few lines or the standard library can do.
 
 ## Changes
