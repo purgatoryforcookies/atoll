@@ -1,5 +1,7 @@
 # Installing Atoll
 
+This builds Atoll from source. To just use it, download the `.dmg` from the [latest release](https://github.com/purgatoryforcookies/atoll/releases/latest) instead, then do [step 3](#3-point-claude-code-at-atoll).
+
 ## Requirements
 
 - macOS 13 or later, ideally a MacBook with a notch
@@ -18,33 +20,11 @@ cd atoll
 This builds Atoll and installs it as `~/Applications/Atoll.app`:
 
 ```sh
-APP=~/Applications/Atoll.app
-cargo build --release
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp target/release/notch "$APP/Contents/MacOS/notch"
-cp icon.icns "$APP/Contents/Resources/icon.icns"
-cat > "$APP/Contents/Info.plist" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleName</key><string>Atoll</string>
-  <key>CFBundleDisplayName</key><string>Atoll</string>
-  <key>CFBundleIdentifier</key><string>dev.atoll.app</string>
-  <key>CFBundleExecutable</key><string>notch</string>
-  <key>CFBundleIconFile</key><string>icon</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.0.1</string>
-  <key>LSMinimumSystemVersion</key><string>13.0</string>
-  <key>NSHighResolutionCapable</key><true/>
-</dict>
-</plist>
-PLIST
-codesign --force --sign - "$APP"
-open "$APP"
+scripts/bundle.sh
+open ~/Applications/Atoll.app
 ```
 
-The first build takes a few minutes. Atoll has no Dock icon; it shows up as a small capsule in the menu bar. Tick **Open at Login** in that menu to start it with your Mac.
+The first build takes a few minutes. The app is signed ad hoc, which is enough to run it on the Mac that built it. Atoll has no Dock icon; it shows up as a small capsule in the menu bar. Tick **Open at Login** in that menu to start it with your Mac.
 
 ## 3. Point Claude Code at Atoll
 

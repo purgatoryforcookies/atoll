@@ -24,12 +24,12 @@ No plugins, no extension, no account: one setting points Claude Code at a relay 
 
 ## At a glance
 
-| State | Island |
-| --- | --- |
-| **Thinking** | <img src="docs/thinking.png" width="461" alt="Thinking, with a violet dot and waveform"> |
-| **Editing** | <img src="docs/editing.png" width="461" alt="Edit, with a blue dot, +17 −3 and a waveform"> |
-| **Your turn** | <img src="docs/your-turn.png" width="461" alt="Your turn, with a green dot and +42 −7"> |
-| **Rate limited** | <img src="docs/rate-limit.png" width="461" alt="Back in 1m 33s, with a draining ring"> |
+| State            | Island                                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------- |
+| **Thinking**     | <img src="docs/thinking.png" width="461" alt="Thinking, with a violet dot and waveform">    |
+| **Editing**      | <img src="docs/editing.png" width="461" alt="Edit, with a blue dot, +17 −3 and a waveform"> |
+| **Your turn**    | <img src="docs/your-turn.png" width="461" alt="Your turn, with a green dot and +42 −7">     |
+| **Rate limited** | <img src="docs/rate-limit.png" width="461" alt="Back in 1m 33s, with a draining ring">      |
 
 ## Features
 
@@ -46,13 +46,9 @@ Atoll runs a small relay on `127.0.0.1` that passes every Claude API call throug
 
 ## Get it
 
-Requires macOS, [Rust](https://rustup.rs) and [Claude Code](https://claude.com/claude-code).
+Requires macOS 13 or later and [Claude Code](https://claude.com/claude-code).
 
-```sh
-git clone https://github.com/purgatoryforcookies/atoll.git && cd atoll
-```
-
-1. **Build and install** it as `~/Applications/Atoll.app` ([INSTALL.md](docs/INSTALL.md#2-build-and-install-the-app)).
+1. **Download** the `.dmg` from the [latest release](https://github.com/purgatoryforcookies/atoll/releases/latest), open it and drag Atoll onto Applications. Or [build it from source](docs/INSTALL.md).
 2. **Point Claude Code at it** in `~/.claude/settings.json`, plus the optional permission hook ([INSTALL.md](docs/INSTALL.md#3-point-claude-code-at-atoll)):
 
    ```json

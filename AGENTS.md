@@ -12,12 +12,12 @@ A macOS menu-bar app that turns the MacBook notch into a Dynamic Island for Clau
 - `src/card.rs`, `src/expanded.rs`: what the expanded card says, and how it draws.
 - `src/chat.rs`: one Claude Code session's state. `src/ledger.rs`: token prices.
 - `src/demo.rs`: the scripted stream behind `--scene`. `src/tests.rs`: all tests.
-- `icon.swift` draws `icon.icns`.
+- `icon.swift` draws `icon.icns`. `scripts/bundle.sh` builds and signs `Atoll.app`; `.github/workflows/` runs the checks and, on a `v*` tag, the signed release.
 
 ## Docs
 
 - [DEVELOP.md](docs/DEVELOP.md): running from source, the scenes, tests and clippy, the Rune pin, screenshots, the icon.
-- [INSTALL.md](docs/INSTALL.md): installing the app, Claude Code settings, configuration.
+- [INSTALL.md](docs/INSTALL.md): building and installing from source, Claude Code settings, configuration.
 - `README.md` is the pitch and a short "get it" for users; detail goes in `docs/`.
 
 Before finishing a change, run `cargo test` and `cargo clippy --all-targets`.

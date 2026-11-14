@@ -29,6 +29,26 @@ cargo test
 cargo clippy --all-targets
 ```
 
+CI (`.github/workflows/ci.yml`) runs both on every push to `main` and every pull request, with clippy warnings as errors.
+
+## Releasing
+
+Push a version tag and `.github/workflows/release.yml` tests, builds a universal (Apple silicon and Intel) `Atoll.app` with `scripts/bundle.sh`, signs it with your Developer ID, packs it into a disk image with an Applications shortcut, signs, notarizes and staples the image, and publishes `Atoll-<version>.dmg` as a GitHub release. The tag sets the app's version:
+
+```sh
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+It needs these repository secrets (Settings → Secrets and variables → Actions):
+
+| Secret                       | What                                                                                                                                      |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `MACOS_CERTIFICATE`          | Your **Developer ID Application** certificate and its private key, exported from Keychain Access as `.p12`, then `base64 -i cert.p12 \| pbcopy` |
+| `MACOS_CERTIFICATE_PASSWORD` | The password you gave the `.p12` export                                                                                                   |
+| `APPLE_ID`                   | The Apple ID email of your developer account                                                                                              |
+| `APPLE_TEAM_ID`              | Your 10-character team ID, at developer.apple.com → Membership                                                                            |
+| `APPLE_APP_PASSWORD`         | An app-specific password from account.apple.com → Sign-In and Security                                                                   |
+
 ## Rune
 
 [Rune](https://github.com/anomalyco/rune) draws the island. It comes from git, pinned by `rev` in `Cargo.toml`; it isn't the `rune` crate on crates.io. The pin points at a fork, `purgatoryforcookies/rune`, which carries one fix not yet upstream: `on_displays_changed`, and a nonactivating panel keeping its click-through. Point it back at `anomalyco/rune` once that lands.

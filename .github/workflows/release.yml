@@ -1,0 +1,63 @@
+# Push a tag like v0.1.0 to build, sign, notarize and publish Atoll-<version>.dmg as a GitHub release.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test
+
+      - name: Import the Developer ID certificate
+        env:
+          CERT: ${{ secrets.MACOS_CERTIFICATE }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/sign.keychain-db"
+          KC_PASSWORD=$(uuidgen)
+          echo "$CERT" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KC_PASSWORD" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KC_PASSWORD" "$KC"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KC_PASSWORD" "$KC"
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+
+      - name: Build and sign
+        env:
+          UNIVERSAL: 1
+          SIGN: Developer ID Application
+        run: |
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          VERSION="${GITHUB_REF_NAME#v}" scripts/bundle.sh dist/dmg/Atoll.app
+
+      - name: Make the disk image
+        run: |
+          ln -s /Applications dist/dmg/Applications
+          hdiutil create -volname Atoll -srcfolder dist/dmg -format UDZO -ov "dist/Atoll-$VERSION.dmg"
+          codesign --timestamp --sign "Developer ID Application" "dist/Atoll-$VERSION.dmg"
+
+      - name: Notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          xcrun notarytool submit "dist/Atoll-$VERSION.dmg" --wait \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"
+          xcrun stapler staple "dist/Atoll-$VERSION.dmg"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "dist/Atoll-$VERSION.dmg" --title "Atoll $VERSION" --generate-notes
