@@ -44,6 +44,7 @@ pub fn demo(s: &mut State, dt: f32) {
         if let Kind::Tool(n) = &kind {
             let file = if n == "Read" { "card.rs" } else { "main.rs" };
             s.apply(Ev::Delta { id, kind: kind.clone(), text: format!(r#"{{"file_path":"src/{file}"}}"#) });
+            s.apply(Ev::Arg { id, arg: file.into() });
         }
     }
     // Bursty, like tokens arriving in uneven chunks.

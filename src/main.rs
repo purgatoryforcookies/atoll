@@ -141,6 +141,8 @@ struct State {
     requests: HashMap<u64, (String, Usage)>,
     /// Dollars of every finished request since Notch opened.
     total_cost: f64,
+    /// Output tokens of every finished request since Notch opened.
+    total_out: u64,
     t: f32,
     last_t: f64,
     demo: Option<f32>,
@@ -190,7 +192,7 @@ impl State {
             Ev::Start { id, model, .. } if model.contains("haiku") => { self.side.insert(id); }
             Ev::Start { id, model, window, session } => {
                 let live: HashSet<&String> = self.sessions.values().collect();
-                self.chats.retain(|c| now - c.seen < 3600.0 || live.contains(&c.id));
+                self.chats.retain(|c| now - c.seen < chat::IDLE || live.contains(&c.id));
                 if !self.chats.iter().any(|c| c.id == session) {
                     if self.chats.len() >= CHATS && let Some(i) = (0..self.chats.len()).min_by(|&a, &b| self.chats[a].seen.total_cmp(&self.chats[b].seen)) { self.chats.remove(i); }
                     self.chats.push(Chat { id: session.clone(), ..Chat::default() });
@@ -243,7 +245,7 @@ impl State {
                 self.live.remove(&id);
                 if let Some((model, usage)) = self.requests.remove(&id) {
                     let cost = ledger::price(&model, &usage);
-                    self.total_cost += cost;
+                    (self.total_cost, self.total_out) = (self.total_cost + cost, self.total_out + usage.output);
                     if let Some(c) = self.chat(id) { (c.turn_out, c.turn_cost) = (c.turn_out + usage.output, c.turn_cost + cost) }
                 }
                 self.sessions.remove(&id);
@@ -376,7 +378,7 @@ impl State {
         // resizes fast, as the iPhone's island does.
         let (top, row) = if flat { (PILL_TOP, PILL_H + (self.wing_v.abs() / 500.0).min(1.0) * STRETCH) } else { (0.0, nh) };
         let rest = if flat { row * 0.5 } else { (nh * 0.32).min(10.0) };
-        let card_h = CARD_H + if self.chats.len() > 1 { PILLS } else { 0.0 };
+        let card_h = CARD_H + if expanded::pilled(self).len() > 1 { PILLS } else { 0.0 };
         Geom { w, wh, k, top, row, half, h: row + card_h * card, r: rest + (CARD_R - rest) * card.clamp(0.0, 1.0) }
     }
 
@@ -579,9 +581,9 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
             let n = s.turn_tokens();
             let text = if limited { s.limit_words() } else { YOUR_TURN.into() };
             labels.push(Label { text, x: left + LABEL_X, y: row_y, room: 0.0, alpha: wait * words, color: INK, right: false, head: false, style: LABEL });
-            // The lines the turn changed stand in for its token count, which the card still has.
+            // The lines the turn changed stand in for its figure, which the open card says instead.
             if limited {} else if s.tally() != [0, 0] { diff_labels(s, right - 16.0, row_y, wait * words, &mut labels); }
-            else if !n.is_empty() { labels.push(Label { text: n, x: right - 16.0, y: row_y, room: 0.0, alpha: wait * words * 0.5, color: INK, right: true, head: false, style: LABEL }) }
+            else if !n.is_empty() { labels.push(Label { text: n, x: right - 16.0, y: row_y, room: 0.0, alpha: wait * words * 0.5 * (1.0 - s.card).clamp(0.0, 1.0), color: INK, right: true, head: false, style: LABEL }) }
         }
     }
     // The card's content fades in over the second half of its opening.
@@ -608,7 +610,7 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
     if ca > 0.0 { for p in expanded::pills(s, &g, ca) { root = root.child(p) } }
     for l in labels {
         let x = if l.right { l.x - rune::text::measure(&l.text, &[], l.style, None).0 } else { l.x };
-        let style = TextStyle::new(l.style.size * k, l.style.weight).tracking(l.style.tracking * k);
+        let style = TextStyle { size: l.style.size * k, tracking: l.style.tracking * k, ..l.style };
         let mut t = text(l.text).font(style).color(Color { a: l.color.a * l.alpha, ..l.color }).absolute(x * k, l.y * k);
         if l.room > 0.0 { t = t.w(l.room * k); t = if l.head { t.truncate_head() } else { t.truncate() } }
         root = root.child(t);

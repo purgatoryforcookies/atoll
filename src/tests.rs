@@ -75,7 +75,7 @@ fn a_turn_counts_its_output_and_the_ring_reads_the_context() {
     s.apply(Ev::Start { id: 3, model: "claude-opus".into(), window: 1_000_000, session: String::new() });
     s.apply(Ev::Usage { id: 3, usage: usage(0, 300_000) });
     assert_eq!(s.turn_tokens(), "");
-    assert!((s.filled() - 0.3).abs() < 1e-3 && s.total_cost == 2.0 * one);
+    assert!((s.filled() - 0.3).abs() < 1e-3 && s.total_cost == 2.0 * one && s.total_out == 2_400);
 }
 
 #[test]
@@ -424,7 +424,15 @@ fn relay_to(answer: &'static str, hold: std::time::Duration) -> (u16, std::sync:
     let upstream = format!("http://{}", api.local_addr().unwrap());
     std::thread::spawn(move || {
         let (mut c, _) = api.accept().unwrap();
-        let _ = c.read(&mut [0u8; 4096]);
+        // Read the whole request, which `ask` ends with its `{}` body: closing on unread bytes
+        // resets the connection, and the relay would see the answer fail.
+        let mut got = Vec::new();
+        while !got.ends_with(b"{}") {
+            let mut buf = [0u8; 4096];
+            let n = c.read(&mut buf).unwrap();
+            if n == 0 { break }
+            got.extend_from_slice(&buf[..n]);
+        }
         c.write_all(answer.as_bytes()).unwrap();
         std::thread::sleep(hold);
     });
@@ -449,7 +457,8 @@ fn the_relay_hands_back_a_redirect_and_every_header_once() {
     ask(port).read_to_string(&mut got).unwrap();
     assert!(got.starts_with("HTTP/1.1 302"), "{got}");
     for h in ["location: http://127.0.0.1:9/elsewhere", "set-cookie: a=1", "set-cookie: b=2"] { assert_eq!(got.matches(h).count(), 1, "{h} in {got}") }
-    assert!(rx.iter().any(|e| e == Ev::End { id: 0, status: 302 }));
+    // The relay keeps its sender for good, so wait a while rather than for the channel to close.
+    assert!(std::iter::from_fn(|| rx.recv_timeout(std::time::Duration::from_secs(2)).ok()).any(|e| e == Ev::End { id: 0, status: 302 }));
 }
 
 #[test]
@@ -476,4 +485,19 @@ fn stopping_claude_mid_think_ends_the_request_at_once() {
             Err(_) => panic!("the request was still live 2s after the client left"),
         }
     }
+}
+
+#[test]
+fn a_session_quiet_fifteen_minutes_leaves_the_pill_row() {
+    let mut s = State::default();
+    for (id, session) in [(1, "a"), (2, "b")] {
+        s.apply(Ev::Start { id, model: String::new(), window: 200_000, session: session.into() });
+        s.apply(Ev::End { id, status: 200 });
+    }
+    s.last_t = chat::IDLE - 1.0;
+    assert_eq!(expanded::pilled(&s).len(), 2);
+    s.last_t = chat::IDLE + 1.0;
+    s.apply(Ev::Start { id: 3, model: String::new(), window: 200_000, session: "b".into() });
+    // "a" went quiet; "b" just spoke.
+    assert_eq!(expanded::pilled(&s).iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["b"]);
 }

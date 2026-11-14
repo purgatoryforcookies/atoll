@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/card.png" width="461" alt="The island opened into a card: Writing, +38 −6, the files read and edited, 4s, 59% context, 1.6k output tokens, $0.056">
+  <img src="docs/card.png" width="461" alt="The island opened into a card: Writing, +38 −6, the tools called, 4s, 59% context, 1.6k output tokens this turn and since launch, each costing $0.056">
 </p>
 
 Stop flipping back to the terminal to check if Claude is done. Atoll shows what Claude is doing, what it's changing and what it's costing, right where your eyes already are, and tells you the moment it's your turn.
@@ -34,8 +34,8 @@ No plugins, no extension, no account: one setting points Claude Code at a relay 
 ## Features
 
 - **Live activity.** A coloured dot and label for thinking, writing or the tool being called, a waveform that moves with the stream, and a running `+42 −7` count of lines added and removed.
-- **Click to expand.** Opens a card with the tool's argument, turn time, context used, output tokens, turn and session cost, model and effort.
-- **Several sessions.** Each Claude Code session gets a pill along the bottom; the lit one owns the numbers.
+- **Click to expand.** Opens a card with the turn's todo step or recent tool calls, turn time, context used, the turn's output tokens and the total since launch with what each cost, then model, effort and files.
+- **Several sessions.** Each Claude Code session gets a pill along the bottom; the lit one owns the numbers. A session quiet for 15 minutes drops off the row.
 - **Rate limits.** Shows when the limit lifts, with a ring draining down to it.
 - **Permission prompts.** With the optional hook, the island turns amber and says "Needs you".
 - **Macs without a notch.** Floats as a small pill under the menu bar and follows it across displays.

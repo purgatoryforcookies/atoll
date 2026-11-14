@@ -21,7 +21,7 @@ pub const PILL_MM: f32 = 7.5;
 /// The pill's zoom when the display doesn't report its size.
 const ZOOM: f32 = 1.25;
 /// How far the expanded card reaches below the island's top row.
-pub const CARD_H: f32 = 108.0;
+pub const CARD_H: f32 = 122.0;
 /// How much further it reaches for the row of session pills, when there are two or more.
 pub const PILLS: f32 = 16.0;
 

@@ -3,6 +3,8 @@
 
 /// The most sessions that keep a pill; past it the one quiet longest goes.
 pub const CHATS: usize = 5;
+/// Seconds a session can stay quiet before its pill leaves the row.
+pub const IDLE: f64 = 900.0;
 /// Seconds a session mid-turn counts as busy without a request in flight, while a tool runs.
 // shortcut: an interrupted turn never ends, so it reads as busy this long; upgrade with a Stop hook.
 pub const BUSY: f64 = 120.0;
